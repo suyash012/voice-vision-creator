@@ -1,8 +1,9 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import Layout from "@/components/Layout";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Auth = () => {
   const [isSignIn, setIsSignIn] = useState(true);
@@ -10,21 +11,32 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, signIn, signUp } = useAuth();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Simulate authentication
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // For demo purposes, automatically succeed
-      localStorage.setItem("faceless-auth", "true");
-      toast.success(`Successfully ${isSignIn ? "signed in" : "signed up"}!`);
+      if (isSignIn) {
+        const { error } = await signIn(email, password);
+        if (error) throw error;
+        toast.success("Successfully signed in!");
+      } else {
+        const { error } = await signUp(email, password);
+        if (error) throw error;
+        toast.success("Sign up successful! Please check your email for verification.");
+      }
       navigate("/");
-    } catch (error) {
-      toast.error("Authentication failed. Please try again.");
+    } catch (error: any) {
+      toast.error(error.message || "Authentication failed. Please try again.");
       console.error("Auth error:", error);
     } finally {
       setIsLoading(false);

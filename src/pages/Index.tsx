@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,6 +9,7 @@ import VoiceControls from "@/components/VoiceControls";
 import Preview from "@/components/Preview";
 import Timeline from "@/components/Timeline";
 import ExportOptions from "@/components/ExportOptions";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   MediaItem,
   CaptionSettings,
@@ -66,7 +66,7 @@ const DEFAULT_EXPORT_CONFIG: ExportConfig = {
 
 const Index = () => {
   const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { user, isLoading } = useAuth();
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [captions, setCaptions] = useState<CaptionSettings>(DEFAULT_CAPTION_SETTINGS);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(DEFAULT_VOICE_SETTINGS);
@@ -82,19 +82,12 @@ const Index = () => {
   const animationFrameRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
 
-  // Check authentication
   useEffect(() => {
-    const isAuth = localStorage.getItem("faceless-auth") === "true";
-    setIsAuthenticated(isAuth);
-    
-    if (!isAuth) {
-      // Simplified for demo - in real app, add delayed redirect
-      // to let the animation complete
-      // navigate("/auth");
+    if (!isLoading && !user) {
+      navigate("/auth");
     }
-  }, [navigate]);
+  }, [user, isLoading, navigate]);
 
-  // Update preview animation
   useEffect(() => {
     const updatePreview = (timestamp: number) => {
       if (!lastTimestampRef.current) {
@@ -118,16 +111,13 @@ const Index = () => {
     };
   }, []);
 
-  // Auto-save effect (every 30 seconds)
   useEffect(() => {
     const saveInterval = setInterval(() => {
-      // Only save if there's actual content
       if (media.length > 0) {
         toast.success("Project auto-saved", {
           duration: 2000,
           position: "bottom-right",
         });
-        // In a real app, this would save to Supabase
       }
     }, 30000);
     
@@ -171,13 +161,11 @@ const Index = () => {
       return;
     }
     
-    // Start processing
     setProcessingState({
       isProcessing: true,
       progress: 0,
     });
     
-    // Simulate processing progress
     let progress = 0;
     const interval = setInterval(() => {
       progress += Math.random() * 15;
@@ -186,7 +174,6 @@ const Index = () => {
         clearInterval(interval);
         progress = 100;
         
-        // Complete the export
         setTimeout(() => {
           setProcessingState({
             isProcessing: false,
@@ -204,14 +191,13 @@ const Index = () => {
     }, 1000);
   };
 
-  if (isAuthenticated === false) {
-    // Show a loading state before redirecting
+  if (isLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-muted border-t-primary"></div>
-            <p className="mt-4 text-lg">Redirecting to login...</p>
+            <p className="mt-4 text-lg">Loading...</p>
           </div>
         </div>
       </Layout>
@@ -221,7 +207,6 @@ const Index = () => {
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header section */}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Faceless Video Creator</h1>
@@ -267,10 +252,8 @@ const Index = () => {
           </div>
         </div>
         
-        {/* Main content grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-6">
-            {/* Preview section */}
             <Preview
               media={media}
               captions={captions}
@@ -278,10 +261,8 @@ const Index = () => {
               currentTime={currentTime}
             />
             
-            {/* Media upload section */}
             <MediaUpload onMediaAdded={handleMediaAdded} />
             
-            {/* Timeline section */}
             <Timeline
               media={media}
               onMediaUpdate={handleMediaUpdate}
@@ -292,14 +273,12 @@ const Index = () => {
           </div>
           
           <div className="space-y-6">
-            {/* Text editor section */}
             <TextEditor
               initialSettings={captions}
               onChange={setCaptions}
               maxLength={280}
             />
             
-            {/* Voice controls section */}
             <VoiceControls
               settings={voiceSettings}
               onUpdate={setVoiceSettings}
@@ -307,7 +286,6 @@ const Index = () => {
               onApiKeyChange={setApiKey}
             />
             
-            {/* Export options section */}
             <ExportOptions
               config={exportConfig}
               videoConfig={videoConfig}
