@@ -48,6 +48,36 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const downloadSampleVideo = () => {
+    // For this demo, we're just downloading a placeholder video
+    // In a real app, this would be the actual rendered video
+    try {
+      // Create a blob URL for a sample video (in production this would be your generated video)
+      const a = document.createElement('a');
+      a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      a.download = `faceless-video-${new Date().getTime()}.${config.format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      toast.success("Sample video downloaded successfully");
+    } catch (error) {
+      console.error("Error downloading video:", error);
+      toast.error("Failed to download video");
+    }
+  };
+
+  // This would be the actual export handler in a real application
+  const handleExport = () => {
+    // First call the original export processing function
+    onExport();
+    
+    // When processing is done, trigger the download
+    if (processingProgress === 100) {
+      downloadSampleVideo();
+    }
+  };
+
   return (
     <div className="glass-panel p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -145,8 +175,8 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 
         <button
           type="button"
-          onClick={onExport}
-          disabled={isProcessing}
+          onClick={isProcessing && processingProgress === 100 ? downloadSampleVideo : handleExport}
+          disabled={isProcessing && processingProgress < 100}
           className="btn-primary w-full py-3 flex items-center justify-center"
         >
           {isProcessing ? (
@@ -171,7 +201,11 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              Processing: {processingProgress}%
+              {processingProgress === 100 ? (
+                "Download Video"
+              ) : (
+                `Processing: ${processingProgress}%`
+              )}
             </>
           ) : (
             <>
@@ -189,7 +223,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              Generate Video
+              Generate & Download Video
             </>
           )}
         </button>

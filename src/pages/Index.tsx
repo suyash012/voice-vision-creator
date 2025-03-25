@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -81,6 +80,7 @@ const Index = () => {
   });
   const [currentTime, setCurrentTime] = useState(0);
   const [activeCaptionText, setActiveCaptionText] = useState<string>("");
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
   const previewPausedRef = useRef<boolean>(false);
@@ -100,8 +100,7 @@ const Index = () => {
       const elapsed = timestamp - lastTimestampRef.current;
       lastTimestampRef.current = timestamp;
       
-      // Only update time if preview is not paused
-      if (!previewPausedRef.current) {
+      if (!previewPausedRef.current && isPlayingAudio) {
         setCurrentTime(prevTime => prevTime + elapsed / 1000);
       }
       
@@ -115,7 +114,7 @@ const Index = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [isPlayingAudio]);
 
   useEffect(() => {
     const saveInterval = setInterval(() => {
@@ -158,14 +157,20 @@ const Index = () => {
 
   const handleCaptionTimeUpdate = (currentTime: number, captionText: string) => {
     setActiveCaptionText(captionText);
-    // Pause the preview animation while voice is playing
-    previewPausedRef.current = true;
   };
 
-  // Reset active caption when voice preview ends
-  const resetActiveCaption = () => {
-    setActiveCaptionText("");
-    previewPausedRef.current = false;
+  const handleAudioPlayingChange = (isPlaying: boolean) => {
+    setIsPlayingAudio(isPlaying);
+    
+    if (isPlaying && !previewPausedRef.current) {
+      setCurrentTime(0);
+    }
+    
+    previewPausedRef.current = !isPlaying;
+  };
+
+  const handlePlayPauseToggle = () => {
+    document.dispatchEvent(new CustomEvent('toggle-audio-playback'));
   };
 
   const handleExport = () => {
@@ -194,19 +199,26 @@ const Index = () => {
         
         setTimeout(() => {
           setProcessingState({
-            isProcessing: false,
-            progress: 0,
+            isProcessing: true,
+            progress: 100,
           });
           
-          toast.success("Video exported successfully!");
+          toast.success("Video ready to download!");
         }, 1000);
+      } else {
+        setProcessingState({
+          isProcessing: true,
+          progress: Math.min(Math.round(progress), 100),
+        });
       }
-      
-      setProcessingState({
-        isProcessing: true,
-        progress: Math.min(Math.round(progress), 100),
-      });
     }, 1000);
+  };
+
+  const resetProcessingState = () => {
+    setProcessingState({
+      isProcessing: false,
+      progress: 0,
+    });
   };
 
   if (isLoading) {
@@ -278,6 +290,8 @@ const Index = () => {
               videoConfig={videoConfig}
               currentTime={currentTime}
               activeCaptionText={activeCaptionText}
+              isPlayingAudio={isPlayingAudio}
+              onPlayPauseToggle={handlePlayPauseToggle}
             />
             
             <MediaUpload onMediaAdded={handleMediaAdded} />
@@ -305,6 +319,7 @@ const Index = () => {
               onApiKeyChange={setApiKey}
               captionText={captions.text}
               onCaptionTimeUpdate={handleCaptionTimeUpdate}
+              onPlayingChange={handleAudioPlayingChange}
             />
             
             <ExportOptions

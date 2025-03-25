@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
@@ -10,6 +9,7 @@ interface VoiceControlsProps {
   onApiKeyChange: (key: string) => void;
   captionText?: string;
   onCaptionTimeUpdate?: (currentTime: number, captionText: string) => void;
+  onPlayingChange?: (isPlaying: boolean) => void;
 }
 
 // Sample voice options (would be fetched from API in production)
@@ -27,7 +27,8 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   apiKey,
   onApiKeyChange,
   captionText,
-  onCaptionTimeUpdate
+  onCaptionTimeUpdate,
+  onPlayingChange
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,20 +50,44 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       // Add event listeners
       audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
       audioRef.current.addEventListener('ended', handleAudioEnded);
-      audioRef.current.addEventListener('play', () => setIsPlaying(true));
-      audioRef.current.addEventListener('pause', () => setIsPlaying(false));
+      audioRef.current.addEventListener('play', handleAudioPlay);
+      audioRef.current.addEventListener('pause', handleAudioPause);
     }
+    
+    // Listen for external play/pause toggle events
+    const handleTogglePlayback = () => {
+      togglePlayPause();
+    };
+    
+    document.addEventListener('toggle-audio-playback', handleTogglePlayback);
     
     return () => {
       // Clean up event listeners when component unmounts
       if (audioRef.current) {
         audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
         audioRef.current.removeEventListener('ended', handleAudioEnded);
-        audioRef.current.removeEventListener('play', () => setIsPlaying(true));
-        audioRef.current.removeEventListener('pause', () => setIsPlaying(false));
+        audioRef.current.removeEventListener('play', handleAudioPlay);
+        audioRef.current.removeEventListener('pause', handleAudioPause);
       }
+      document.removeEventListener('toggle-audio-playback', handleTogglePlayback);
     };
   }, []);
+
+  // Handle audio play event
+  const handleAudioPlay = () => {
+    setIsPlaying(true);
+    if (onPlayingChange) {
+      onPlayingChange(true);
+    }
+  };
+  
+  // Handle audio pause event
+  const handleAudioPause = () => {
+    setIsPlaying(false);
+    if (onPlayingChange) {
+      onPlayingChange(false);
+    }
+  };
 
   // Update audio URL when it changes
   useEffect(() => {
@@ -129,13 +154,16 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
 
   const handleAudioEnded = () => {
     setIsPlaying(false);
+    if (onPlayingChange) {
+      onPlayingChange(false);
+    }
     
     // Reset current caption index
     setCurrentCaptionIndex(0);
     
     // Callback to reset captions in parent
     if (onCaptionTimeUpdate) {
-      onCaptionTimeUpdate(0, captionText || "");
+      onCaptionTimeUpdate(0, "");
     }
   };
 
@@ -232,6 +260,9 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       console.error("Error playing voice preview:", error);
       toast.error(error instanceof Error ? error.message : "Failed to play voice preview");
       setIsPlaying(false);
+      if (onPlayingChange) {
+        onPlayingChange(false);
+      }
     } finally {
       setIsLoading(false);
     }

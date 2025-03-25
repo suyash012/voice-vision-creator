@@ -13,6 +13,9 @@ interface PreviewProps {
   videoConfig: VideoConfig;
   currentTime: number;
   activeCaptionText?: string;
+  isPlayingAudio?: boolean;
+  onTimeUpdate?: (time: number) => void;
+  onPlayPauseToggle?: () => void;
 }
 
 const Preview: React.FC<PreviewProps> = ({ 
@@ -20,11 +23,15 @@ const Preview: React.FC<PreviewProps> = ({
   captions, 
   videoConfig, 
   currentTime,
-  activeCaptionText
+  activeCaptionText,
+  isPlayingAudio = false,
+  onTimeUpdate,
+  onPlayPauseToggle
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
 
   // Calculate aspect ratio dimensions
   const getAspectRatioDimensions = (ratio: AspectRatio, containerWidth: number): { width: number, height: number } => {
@@ -94,6 +101,17 @@ const Preview: React.FC<PreviewProps> = ({
   // Determine which caption text to display - either active caption from TTS or the full caption
   const displayText = activeCaptionText || captions.text;
 
+  // Handle play/pause click
+  const handlePlayPauseClick = () => {
+    if (onPlayPauseToggle) {
+      onPlayPauseToggle();
+    }
+  };
+
+  // Calculate total duration and progress
+  const totalDuration = media.length * 5; // 5 seconds per media
+  const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
+
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">
       <div 
@@ -103,6 +121,8 @@ const Preview: React.FC<PreviewProps> = ({
           height: `${containerSize.height}px`,
           margin: "0 auto"
         }}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
       >
         {media.length === 0 ? (
           <div className="flex h-full w-full items-center justify-center">
@@ -157,16 +177,61 @@ const Preview: React.FC<PreviewProps> = ({
           {videoConfig.resolution} • {videoConfig.frameRate}fps
         </div>
         
+        {/* Play/Pause button overlay (visible on hover or when audio is playing) */}
+        {(isHovering || isPlayingAudio) && media.length > 0 && (
+          <button
+            onClick={handlePlayPauseClick}
+            className="absolute inset-0 m-auto w-14 h-14 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 transition-all"
+            style={{ width: '60px', height: '60px' }}
+          >
+            {isPlayingAudio ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-8 w-8"
+              >
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-8 w-8"
+              >
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+            )}
+          </button>
+        )}
+        
         {/* Timeline indicator */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+        <div className="absolute bottom-0 left-0 right-0 h-2 bg-black/20">
           <div 
             className="h-full bg-primary transition-all" 
-            style={{ 
-              width: media.length ? 
-                `${(currentMediaIndex + (currentTime % 5) / 5) / media.length * 100}%` : 
-                '0%' 
-            }}
+            style={{ width: `${progress}%` }}
           ></div>
+        </div>
+        
+        {/* Timeline markers */}
+        <div className="absolute bottom-0 left-0 right-0 h-2">
+          {media.map((_, index) => (
+            <div 
+              key={index}
+              className="absolute top-0 bottom-0 w-px bg-white/30"
+              style={{ left: `${(index / media.length) * 100}%` }}
+            />
+          ))}
         </div>
       </div>
     </div>
