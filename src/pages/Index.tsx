@@ -284,6 +284,7 @@ const Index = () => {
               onUpdate={setVoiceSettings}
               apiKey={apiKey}
               onApiKeyChange={setApiKey}
+              captionText={captions.text}
             />
             
             <ExportOptions

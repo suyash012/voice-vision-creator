@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -8,6 +8,7 @@ interface VoiceControlsProps {
   onUpdate: (settings: VoiceSettings) => void;
   apiKey: string;
   onApiKeyChange: (key: string) => void;
+  captionText?: string;
 }
 
 // Sample voice options (would be fetched from API in production)
@@ -24,13 +25,53 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   onUpdate,
   apiKey,
   onApiKeyChange,
+  captionText,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const captionTimingsRef = useRef<{start: number; end: number; text: string}[]>([]);
+  const currentCaptionIndexRef = useRef<number>(0);
+  
   const updateSettings = (newSettings: Partial<VoiceSettings>) => {
     onUpdate({ ...settings, ...newSettings });
+  };
+
+  const generateSentenceTimings = (text: string, durationEstimate: number) => {
+    if (!text) return [];
+    
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const timings: {start: number; end: number; text: string}[] = [];
+    
+    let currentTime = 0;
+    const avgSentenceDuration = durationEstimate / sentences.length;
+    
+    sentences.forEach((sentence, index) => {
+      const trimmedSentence = sentence.trim();
+      if (!trimmedSentence) return;
+      
+      // Estimate duration based on word count and character length
+      const wordCount = trimmedSentence.split(/\s+/).length;
+      const charCount = trimmedSentence.length;
+      
+      // Simple duration estimation algorithm
+      const sentenceDuration = (wordCount * 0.5 + charCount * 0.05) * 
+                              (settings.speed ? 1/settings.speed : 1);
+      
+      // Ensure a minimum duration and adjust based on available total time
+      const duration = Math.max(0.8, Math.min(sentenceDuration, avgSentenceDuration * 1.5));
+      
+      timings.push({
+        start: currentTime,
+        end: currentTime + duration,
+        text: trimmedSentence
+      });
+      
+      currentTime += duration;
+    });
+    
+    return timings;
   };
 
   const playPreview = async () => {
@@ -39,8 +80,10 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       return;
     }
 
-    if (isPlaying) {
+    if (isPlaying && audioRef.current) {
       // Stop playing if already playing
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
       setIsPlaying(false);
       return;
     }
@@ -50,18 +93,95 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
 
     try {
       const selectedVoice = VOICE_OPTIONS.find(v => v.id === settings.voiceId);
+      const textToVoice = captionText || "This is a sample voice preview. Adjust the settings to customize how your captions will sound.";
+      
+      const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/" + settings.voiceId, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": apiKey
+        },
+        body: JSON.stringify({
+          text: textToVoice,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+            speaking_rate: settings.speed,
+            pitch: settings.pitch / 100 // ElevenLabs uses -1 to 1 range
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.detail?.message || `API error: ${response.status}`);
+      }
+
+      // Get blob from response
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // Get approximate duration from blob size (rough estimate)
+      const estimatedDuration = (audioBlob.size / 32000) * settings.speed; // rough estimate based on 32kbps audio
+      
+      // Generate timings for sentence-by-sentence display
+      captionTimingsRef.current = generateSentenceTimings(textToVoice, estimatedDuration);
+      currentCaptionIndexRef.current = 0;
+      
+      // Create or update audio element
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      
+      audioRef.current.src = audioUrl;
+      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+      audioRef.current.addEventListener('ended', handleAudioEnded);
       
       toast.success(`Playing preview with ${selectedVoice?.name || 'selected voice'}`);
       
-      // Simulate audio playing (in a real app, this would call the ElevenLabs API)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Play the audio
+      await audioRef.current.play();
       
     } catch (error) {
       console.error("Error playing voice preview:", error);
-      toast.error("Failed to play voice preview");
+      toast.error(error instanceof Error ? error.message : "Failed to play voice preview");
+      setIsPlaying(false);
     } finally {
       setIsLoading(false);
-      setIsPlaying(false);
+    }
+  };
+  
+  const handleTimeUpdate = () => {
+    if (!audioRef.current || captionTimingsRef.current.length === 0) return;
+    
+    const currentTime = audioRef.current.currentTime;
+    const timings = captionTimingsRef.current;
+    
+    // Find the current caption based on timestamp
+    for (let i = 0; i < timings.length; i++) {
+      if (currentTime >= timings[i].start && currentTime <= timings[i].end) {
+        if (currentCaptionIndexRef.current !== i) {
+          currentCaptionIndexRef.current = i;
+          // Here you would update the visible caption
+          // This is where you'd dispatch an event or call a callback to update the UI
+          console.log("Current caption:", timings[i].text);
+          
+          // In a complete implementation, you'd pass this to a state update or callback
+          // that would update the visible caption in the Preview component
+        }
+        return;
+      }
+    }
+  };
+  
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+    if (audioRef.current) {
+      audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
+      audioRef.current.removeEventListener('ended', handleAudioEnded);
     }
   };
 
