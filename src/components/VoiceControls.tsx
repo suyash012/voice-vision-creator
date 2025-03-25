@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ interface VoiceControlsProps {
   apiKey: string;
   onApiKeyChange: (key: string) => void;
   captionText?: string;
+  onCaptionTimeUpdate?: (currentTime: number, captionText: string) => void;
 }
 
 // Sample voice options (would be fetched from API in production)
@@ -26,52 +27,129 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   apiKey,
   onApiKeyChange,
   captionText,
+  onCaptionTimeUpdate
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [captionTimings, setCaptionTimings] = useState<{start: number; end: number; text: string}[]>([]);
+  const [currentCaptionIndex, setCurrentCaptionIndex] = useState<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const captionTimingsRef = useRef<{start: number; end: number; text: string}[]>([]);
-  const currentCaptionIndexRef = useRef<number>(0);
   
   const updateSettings = (newSettings: Partial<VoiceSettings>) => {
     onUpdate({ ...settings, ...newSettings });
   };
 
+  useEffect(() => {
+    // Create audio element if it doesn't exist
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      
+      // Add event listeners
+      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+      audioRef.current.addEventListener('ended', handleAudioEnded);
+      audioRef.current.addEventListener('play', () => setIsPlaying(true));
+      audioRef.current.addEventListener('pause', () => setIsPlaying(false));
+    }
+    
+    return () => {
+      // Clean up event listeners when component unmounts
+      if (audioRef.current) {
+        audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
+        audioRef.current.removeEventListener('ended', handleAudioEnded);
+        audioRef.current.removeEventListener('play', () => setIsPlaying(true));
+        audioRef.current.removeEventListener('pause', () => setIsPlaying(false));
+      }
+    };
+  }, []);
+
+  // Update audio URL when it changes
+  useEffect(() => {
+    if (audioUrl && audioRef.current) {
+      audioRef.current.src = audioUrl;
+    }
+  }, [audioUrl]);
+
   const generateSentenceTimings = (text: string, durationEstimate: number) => {
     if (!text) return [];
     
+    // Improved sentence detection regex to handle multiple punctuation types
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
     const timings: {start: number; end: number; text: string}[] = [];
     
     let currentTime = 0;
-    const avgSentenceDuration = durationEstimate / sentences.length;
+    const totalTextLength = text.length;
     
-    sentences.forEach((sentence, index) => {
+    sentences.forEach((sentence) => {
       const trimmedSentence = sentence.trim();
       if (!trimmedSentence) return;
       
-      // Estimate duration based on word count and character length
-      const wordCount = trimmedSentence.split(/\s+/).length;
-      const charCount = trimmedSentence.length;
+      // Estimate duration based on sentence length relative to total text
+      const sentenceLength = trimmedSentence.length;
+      const percentOfTotal = sentenceLength / totalTextLength;
       
-      // Simple duration estimation algorithm
-      const sentenceDuration = (wordCount * 0.5 + charCount * 0.05) * 
-                              (settings.speed ? 1/settings.speed : 1);
-      
-      // Ensure a minimum duration and adjust based on available total time
-      const duration = Math.max(0.8, Math.min(sentenceDuration, avgSentenceDuration * 1.5));
+      // Calculate sentence duration as percentage of total duration
+      // Applying speed factor and adding a small buffer for pauses between sentences
+      const sentenceDuration = (durationEstimate * percentOfTotal) / (settings.speed || 1) + 0.2;
       
       timings.push({
         start: currentTime,
-        end: currentTime + duration,
+        end: currentTime + sentenceDuration,
         text: trimmedSentence
       });
       
-      currentTime += duration;
+      currentTime += sentenceDuration;
     });
     
     return timings;
+  };
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current || captionTimings.length === 0) return;
+    
+    const currentTime = audioRef.current.currentTime;
+    
+    // Find the current caption based on timestamp
+    for (let i = 0; i < captionTimings.length; i++) {
+      const timing = captionTimings[i];
+      if (currentTime >= timing.start && currentTime <= timing.end) {
+        if (currentCaptionIndex !== i) {
+          setCurrentCaptionIndex(i);
+          
+          // Call the callback to update the caption in the parent component
+          if (onCaptionTimeUpdate) {
+            onCaptionTimeUpdate(currentTime, timing.text);
+          }
+        }
+        return;
+      }
+    }
+  };
+
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+    
+    // Reset current caption index
+    setCurrentCaptionIndex(0);
+    
+    // Callback to reset captions in parent
+    if (onCaptionTimeUpdate) {
+      onCaptionTimeUpdate(0, captionText || "");
+    }
+  };
+
+  const togglePlayPause = () => {
+    if (!audioRef.current || !audioUrl) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(error => {
+        console.error("Error playing audio:", error);
+        toast.error("Failed to play audio. Please try again.");
+      });
+    }
   };
 
   const playPreview = async () => {
@@ -80,20 +158,28 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       return;
     }
 
-    if (isPlaying && audioRef.current) {
-      // Stop playing if already playing
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setIsPlaying(false);
+    // If we already have audio loaded, just toggle play/pause
+    if (audioUrl && audioRef.current) {
+      togglePlayPause();
       return;
     }
 
     setIsLoading(true);
-    setIsPlaying(true);
 
     try {
       const selectedVoice = VOICE_OPTIONS.find(v => v.id === settings.voiceId);
       const textToVoice = captionText || "This is a sample voice preview. Adjust the settings to customize how your captions will sound.";
+      
+      // Clear previous URL if exists
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
+      }
+      
+      console.log("Generating speech with ElevenLabs API...");
+      console.log("Voice ID:", settings.voiceId);
+      console.log("Speed:", settings.speed);
+      console.log("Pitch:", settings.pitch);
       
       const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/" + settings.voiceId, {
         method: "POST",
@@ -122,28 +208,25 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
 
       // Get blob from response
       const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
+      const newAudioUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(newAudioUrl);
       
       // Get approximate duration from blob size (rough estimate)
       const estimatedDuration = (audioBlob.size / 32000) * settings.speed; // rough estimate based on 32kbps audio
       
       // Generate timings for sentence-by-sentence display
-      captionTimingsRef.current = generateSentenceTimings(textToVoice, estimatedDuration);
-      currentCaptionIndexRef.current = 0;
+      const timings = generateSentenceTimings(textToVoice, estimatedDuration);
+      setCaptionTimings(timings);
+      setCurrentCaptionIndex(0);
       
-      // Create or update audio element
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
+      // Set up audio element
+      if (audioRef.current) {
+        audioRef.current.src = newAudioUrl;
+        
+        // Play the audio
+        toast.success(`Playing preview with ${selectedVoice?.name || 'selected voice'}`);
+        await audioRef.current.play();
       }
-      
-      audioRef.current.src = audioUrl;
-      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-      audioRef.current.addEventListener('ended', handleAudioEnded);
-      
-      toast.success(`Playing preview with ${selectedVoice?.name || 'selected voice'}`);
-      
-      // Play the audio
-      await audioRef.current.play();
       
     } catch (error) {
       console.error("Error playing voice preview:", error);
@@ -151,37 +234,6 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       setIsPlaying(false);
     } finally {
       setIsLoading(false);
-    }
-  };
-  
-  const handleTimeUpdate = () => {
-    if (!audioRef.current || captionTimingsRef.current.length === 0) return;
-    
-    const currentTime = audioRef.current.currentTime;
-    const timings = captionTimingsRef.current;
-    
-    // Find the current caption based on timestamp
-    for (let i = 0; i < timings.length; i++) {
-      if (currentTime >= timings[i].start && currentTime <= timings[i].end) {
-        if (currentCaptionIndexRef.current !== i) {
-          currentCaptionIndexRef.current = i;
-          // Here you would update the visible caption
-          // This is where you'd dispatch an event or call a callback to update the UI
-          console.log("Current caption:", timings[i].text);
-          
-          // In a complete implementation, you'd pass this to a state update or callback
-          // that would update the visible caption in the Preview component
-        }
-        return;
-      }
-    }
-  };
-  
-  const handleAudioEnded = () => {
-    setIsPlaying(false);
-    if (audioRef.current) {
-      audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
-      audioRef.current.removeEventListener('ended', handleAudioEnded);
     }
   };
 
@@ -192,6 +244,10 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   const handlePitchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     updateSettings({ pitch: parseFloat(e.target.value) });
   };
+
+  // Display current caption timing info for debugging
+  const currentCaption = captionTimings[currentCaptionIndex];
+  const currentCaptionText = currentCaption?.text || "";
 
   return (
     <div className="glass-panel p-5 space-y-4">
@@ -319,6 +375,74 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
         </div>
       </div>
 
+      {/* Add audio player UI when audio is available */}
+      {audioUrl && (
+        <div className="pt-2 border-t border-border">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">Audio Preview</div>
+            <div className="text-xs text-muted-foreground">
+              {audioRef.current ? 
+                `${Math.floor(audioRef.current.currentTime)}s / ${Math.floor(audioRef.current.duration || 0)}s` : 
+                "0s / 0s"}
+            </div>
+          </div>
+          
+          <div className="mt-2 px-2">
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all" 
+                style={{ 
+                  width: `${audioRef.current ? 
+                    (audioRef.current.currentTime / (audioRef.current.duration || 1)) * 100 : 0}%` 
+                }}
+              ></div>
+            </div>
+          </div>
+          
+          <div className="flex justify-center mt-3">
+            <button
+              type="button"
+              onClick={togglePlayPause}
+              className="rounded-full bg-primary p-2 text-primary-foreground hover:bg-primary/90"
+            >
+              {isPlaying ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              )}
+            </button>
+          </div>
+          
+          {/* Current caption display */}
+          <div className="mt-3 p-2 bg-muted/30 rounded-md text-sm text-center">
+            {currentCaptionText || "No captions available"}
+          </div>
+        </div>
+      )}
+
       <div className="pt-2">
         <button
           type="button"
@@ -349,35 +473,55 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-          ) : isPlaying ? (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mr-2 h-4 w-4"
-            >
-              <rect x="6" y="4" width="4" height="16" />
-              <rect x="14" y="4" width="4" height="16" />
-            </svg>
+          ) : audioUrl ? (
+            <>
+              {isPlaying ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mr-2 h-4 w-4"
+                >
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mr-2 h-4 w-4"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              )}
+              {isPlaying ? "Pause Preview" : "Play Preview"}
+            </>
           ) : (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mr-2 h-4 w-4"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
+            <>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-2 h-4 w-4"
+              >
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              Generate Voice Preview
+            </>
           )}
-          {isLoading ? "Loading..." : isPlaying ? "Stop Preview" : "Play Voice Preview"}
         </button>
       </div>
     </div>

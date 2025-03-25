@@ -12,13 +12,15 @@ interface PreviewProps {
   captions: CaptionSettings;
   videoConfig: VideoConfig;
   currentTime: number;
+  activeCaptionText?: string;
 }
 
 const Preview: React.FC<PreviewProps> = ({ 
   media, 
   captions, 
   videoConfig, 
-  currentTime 
+  currentTime,
+  activeCaptionText
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -89,6 +91,9 @@ const Preview: React.FC<PreviewProps> = ({
     bottom: "bottom-4",
   }[captions.position];
 
+  // Determine which caption text to display - either active caption from TTS or the full caption
+  const displayText = activeCaptionText || captions.text;
+
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">
       <div 
@@ -134,7 +139,7 @@ const Preview: React.FC<PreviewProps> = ({
         )}
         
         {/* Caption overlay */}
-        {captions.text && (
+        {displayText && (
           <div
             className={`absolute inset-x-0 px-4 text-center ${captionPositionClass}`}
           >
@@ -142,7 +147,7 @@ const Preview: React.FC<PreviewProps> = ({
               className="inline-block max-w-[90%] bg-black/40 backdrop-blur-sm px-3 py-2 rounded-md"
               style={captionStyle}
             >
-              {captions.text}
+              {displayText}
             </div>
           </div>
         )}
@@ -150,6 +155,18 @@ const Preview: React.FC<PreviewProps> = ({
         {/* Resolution and FPS indicator */}
         <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white/80 text-xs px-2 py-1 rounded">
           {videoConfig.resolution} • {videoConfig.frameRate}fps
+        </div>
+        
+        {/* Timeline indicator */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+          <div 
+            className="h-full bg-primary transition-all" 
+            style={{ 
+              width: media.length ? 
+                `${(currentMediaIndex + (currentTime % 5) / 5) / media.length * 100}%` : 
+                '0%' 
+            }}
+          ></div>
         </div>
       </div>
     </div>

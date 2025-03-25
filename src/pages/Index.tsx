@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -79,8 +80,10 @@ const Index = () => {
     progress: 0,
   });
   const [currentTime, setCurrentTime] = useState(0);
+  const [activeCaptionText, setActiveCaptionText] = useState<string>("");
   const animationFrameRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
+  const previewPausedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -97,7 +100,10 @@ const Index = () => {
       const elapsed = timestamp - lastTimestampRef.current;
       lastTimestampRef.current = timestamp;
       
-      setCurrentTime(prevTime => prevTime + elapsed / 1000);
+      // Only update time if preview is not paused
+      if (!previewPausedRef.current) {
+        setCurrentTime(prevTime => prevTime + elapsed / 1000);
+      }
       
       animationFrameRef.current = requestAnimationFrame(updatePreview);
     };
@@ -148,6 +154,18 @@ const Index = () => {
 
   const handleResolutionChange = (resolution: Resolution) => {
     setVideoConfig(prev => ({ ...prev, resolution }));
+  };
+
+  const handleCaptionTimeUpdate = (currentTime: number, captionText: string) => {
+    setActiveCaptionText(captionText);
+    // Pause the preview animation while voice is playing
+    previewPausedRef.current = true;
+  };
+
+  // Reset active caption when voice preview ends
+  const resetActiveCaption = () => {
+    setActiveCaptionText("");
+    previewPausedRef.current = false;
   };
 
   const handleExport = () => {
@@ -259,6 +277,7 @@ const Index = () => {
               captions={captions}
               videoConfig={videoConfig}
               currentTime={currentTime}
+              activeCaptionText={activeCaptionText}
             />
             
             <MediaUpload onMediaAdded={handleMediaAdded} />
@@ -285,6 +304,7 @@ const Index = () => {
               apiKey={apiKey}
               onApiKeyChange={setApiKey}
               captionText={captions.text}
+              onCaptionTimeUpdate={handleCaptionTimeUpdate}
             />
             
             <ExportOptions
