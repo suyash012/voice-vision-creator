@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -24,6 +23,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
     setIsUploading(true);
     setProcessedCount(0);
     setTotalFiles(acceptedFiles.length);
+    
+    console.log(`Processing ${acceptedFiles.length} files`);
 
     for (const file of acceptedFiles) {
       try {
@@ -130,7 +131,7 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
       'video/webm': [],
     },
     maxSize,
-    multiple: true, // Allow multiple file selection
+    multiple: true, // Explicitly set to allow multiple file selection
   });
 
   return (

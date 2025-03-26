@@ -33,6 +33,7 @@ const Preview: React.FC<PreviewProps> = ({
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [currentCaptionWords, setCurrentCaptionWords] = useState<string[]>([]);
+  const [displayedWordIndex, setDisplayedWordIndex] = useState(0);
   
   // Calculate aspect ratio dimensions
   const getAspectRatioDimensions = (ratio: AspectRatio, containerWidth: number): { width: number, height: number } => {
@@ -78,7 +79,7 @@ const Preview: React.FC<PreviewProps> = ({
     }
   }, [currentTime, media]);
 
-  // Process captions to limit to 3 words per frame
+  // Process captions to split into 3-word chunks
   useEffect(() => {
     if (activeCaptionText) {
       // Split by word
@@ -93,6 +94,23 @@ const Preview: React.FC<PreviewProps> = ({
       setCurrentCaptionWords([]);
     }
   }, [activeCaptionText]);
+
+  // Update displayed word index based on time
+  useEffect(() => {
+    if (currentCaptionWords.length > 0 && isPlayingAudio) {
+      // Estimate the timing for each chunk of words
+      // This is a simplistic approach - in a real app you'd use actual timings from TTS API
+      const totalDuration = media.length * 5; // 5 seconds per media
+      const wordChunkDuration = totalDuration / currentCaptionWords.length;
+      const currentWordIndex = Math.min(
+        Math.floor(currentTime / wordChunkDuration),
+        currentCaptionWords.length - 1
+      );
+      setDisplayedWordIndex(currentWordIndex);
+    } else if (!isPlayingAudio) {
+      setDisplayedWordIndex(0);
+    }
+  }, [currentTime, currentCaptionWords, isPlayingAudio, media.length]);
 
   // Get current media to display
   const currentMedia = media.length > 0 ? media[currentMediaIndex] : null;
@@ -125,10 +143,10 @@ const Preview: React.FC<PreviewProps> = ({
   const totalDuration = media.length * 5; // 5 seconds per media
   const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
 
-  // Determine which caption text to display - either active caption chunk or first words of full caption
-  const displayText = currentCaptionWords.length > 0 ? 
-    currentCaptionWords[Math.min(Math.floor(progress % 100 / (100 / currentCaptionWords.length)), currentCaptionWords.length - 1)] :
-    captions.text.split(/\s+/).slice(0, 3).join(' ');
+  // Get the current caption text to display (3 words max per frame)
+  const displayText = currentCaptionWords.length > 0 && isPlayingAudio 
+    ? currentCaptionWords[displayedWordIndex] 
+    : '';
 
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">
