@@ -15,83 +15,108 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
   maxSize = 50 * 1024 * 1024 // 50MB default
 }) => {
   const [isUploading, setIsUploading] = useState(false);
+  const [processedCount, setProcessedCount] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    // Process only the first file for simplicity
-    const file = acceptedFiles[0];
-    if (!file) return;
+    if (acceptedFiles.length === 0) return;
 
     setIsUploading(true);
+    setProcessedCount(0);
+    setTotalFiles(acceptedFiles.length);
 
-    try {
-      // Validate file type
-      const fileType = file.type.split('/')[0] as MediaType;
-      if (fileType !== 'image' && fileType !== 'video') {
-        toast.error('Only images and videos are supported');
-        return;
-      }
+    for (const file of acceptedFiles) {
+      try {
+        // Validate file type
+        const fileType = file.type.split('/')[0] as MediaType;
+        if (fileType !== 'image' && fileType !== 'video') {
+          toast.error(`File ${file.name}: Only images and videos are supported`);
+          continue;
+        }
 
-      // Validate file size
-      if (file.size > maxSize) {
-        toast.error(`File size exceeds the maximum limit of ${maxSize / (1024 * 1024)}MB`);
-        return;
-      }
+        // Validate file size
+        if (file.size > maxSize) {
+          toast.error(`File ${file.name}: Exceeds the maximum limit of ${maxSize / (1024 * 1024)}MB`);
+          continue;
+        }
 
-      // Create media item
-      const mediaItem: MediaItem = {
-        id: uuidv4(),
-        type: fileType,
-        file,
-        url: URL.createObjectURL(file),
-      };
-
-      // If it's a video, get duration and create thumbnail
-      if (fileType === 'video') {
-        const video = document.createElement('video');
-        video.preload = 'metadata';
-        
-        video.onloadedmetadata = () => {
-          mediaItem.duration = video.duration;
-          
-          // Create thumbnail (simplified version)
-          const canvas = document.createElement('canvas');
-          canvas.width = 160;
-          canvas.height = 90;
-          video.currentTime = 1; // Seek to 1 second
-          
-          video.onseeked = () => {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              mediaItem.thumbnail = canvas.toDataURL();
-              onMediaAdded(mediaItem);
-              setIsUploading(false);
-            }
-          };
+        // Create media item
+        const mediaItem: MediaItem = {
+          id: uuidv4(),
+          type: fileType,
+          file,
+          url: URL.createObjectURL(file),
         };
-        
-        video.src = mediaItem.url;
-      } else {
-        // For images, just create a thumbnail from the image itself
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 160;
-          canvas.height = 90;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            mediaItem.thumbnail = canvas.toDataURL();
-            onMediaAdded(mediaItem);
-            setIsUploading(false);
-          }
-        };
-        img.src = mediaItem.url;
+
+        // If it's a video, get duration and create thumbnail
+        if (fileType === 'video') {
+          await new Promise<void>((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            
+            video.onloadedmetadata = () => {
+              mediaItem.duration = video.duration;
+              
+              // Create thumbnail
+              const canvas = document.createElement('canvas');
+              canvas.width = 160;
+              canvas.height = 90;
+              video.currentTime = 1; // Seek to 1 second
+              
+              video.onseeked = () => {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  mediaItem.thumbnail = canvas.toDataURL();
+                  onMediaAdded(mediaItem);
+                  setProcessedCount(prev => prev + 1);
+                  resolve();
+                }
+              };
+            };
+            
+            video.onerror = () => {
+              toast.error(`Failed to process video: ${file.name}`);
+              resolve();
+            };
+            
+            video.src = mediaItem.url;
+          });
+        } else {
+          // For images, create a thumbnail from the image itself
+          await new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = 160;
+              canvas.height = 90;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                mediaItem.thumbnail = canvas.toDataURL();
+                onMediaAdded(mediaItem);
+                setProcessedCount(prev => prev + 1);
+                resolve();
+              }
+            };
+            
+            img.onerror = () => {
+              toast.error(`Failed to process image: ${file.name}`);
+              resolve();
+            };
+            
+            img.src = mediaItem.url;
+          });
+        }
+      } catch (error) {
+        toast.error(`Failed to process file: ${file.name}`);
+        console.error('Media upload error:', error);
       }
-    } catch (error) {
-      toast.error('Failed to process media');
-      console.error('Media upload error:', error);
-      setIsUploading(false);
+    }
+    
+    setIsUploading(false);
+    if (processedCount > 0) {
+      toast.success(`Added ${processedCount} media files`);
     }
   }, [onMediaAdded, maxSize]);
 
@@ -105,7 +130,7 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
       'video/webm': [],
     },
     maxSize,
-    multiple: false,
+    multiple: true, // Allow multiple file selection
   });
 
   return (
@@ -137,15 +162,20 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
       {isUploading ? (
         <div className="mb-2 flex flex-col items-center">
           <div className="mb-2 h-1 w-48 overflow-hidden rounded-full bg-secondary">
-            <div className="h-full w-1/2 animate-pulse-subtle rounded-full bg-primary"></div>
+            <div 
+              className="h-full rounded-full bg-primary transition-all" 
+              style={{ width: `${(processedCount / totalFiles) * 100}%` }}
+            ></div>
           </div>
-          <p className="text-sm text-muted-foreground">Processing...</p>
+          <p className="text-sm text-muted-foreground">
+            Processing {processedCount}/{totalFiles} files...
+          </p>
         </div>
       ) : (
         <>
           <h3 className="mb-2 text-base font-medium">Drop media here or click to browse</h3>
           <p className="text-sm text-muted-foreground">
-            Supports JPG, PNG, WebP, MP4, WebM up to 50MB
+            Supports multiple JPG, PNG, WebP, MP4, WebM files up to 50MB each
           </p>
         </>
       )}

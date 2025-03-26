@@ -32,7 +32,8 @@ const Preview: React.FC<PreviewProps> = ({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
-
+  const [currentCaptionWords, setCurrentCaptionWords] = useState<string[]>([]);
+  
   // Calculate aspect ratio dimensions
   const getAspectRatioDimensions = (ratio: AspectRatio, containerWidth: number): { width: number, height: number } => {
     switch (ratio) {
@@ -64,7 +65,6 @@ const Preview: React.FC<PreviewProps> = ({
 
   // Update current media based on time
   useEffect(() => {
-    // Simplified logic - in a real app would need to account for media durations
     if (media.length > 0) {
       const mediaDuration = 5; // Assuming 5 seconds per media item for demo
       const totalDuration = media.length * mediaDuration;
@@ -77,6 +77,22 @@ const Preview: React.FC<PreviewProps> = ({
       setCurrentMediaIndex(Math.min(index, media.length - 1));
     }
   }, [currentTime, media]);
+
+  // Process captions to limit to 3 words per frame
+  useEffect(() => {
+    if (activeCaptionText) {
+      // Split by word
+      const words = activeCaptionText.split(/\s+/);
+      // Chunk into groups of max 3 words
+      const chunks: string[] = [];
+      for (let i = 0; i < words.length; i += 3) {
+        chunks.push(words.slice(i, i + 3).join(' '));
+      }
+      setCurrentCaptionWords(chunks);
+    } else {
+      setCurrentCaptionWords([]);
+    }
+  }, [activeCaptionText]);
 
   // Get current media to display
   const currentMedia = media.length > 0 ? media[currentMediaIndex] : null;
@@ -98,9 +114,6 @@ const Preview: React.FC<PreviewProps> = ({
     bottom: "bottom-4",
   }[captions.position];
 
-  // Determine which caption text to display - either active caption from TTS or the full caption
-  const displayText = activeCaptionText || captions.text;
-
   // Handle play/pause click
   const handlePlayPauseClick = () => {
     if (onPlayPauseToggle) {
@@ -111,6 +124,11 @@ const Preview: React.FC<PreviewProps> = ({
   // Calculate total duration and progress
   const totalDuration = media.length * 5; // 5 seconds per media
   const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
+
+  // Determine which caption text to display - either active caption chunk or first words of full caption
+  const displayText = currentCaptionWords.length > 0 ? 
+    currentCaptionWords[Math.min(Math.floor(progress % 100 / (100 / currentCaptionWords.length)), currentCaptionWords.length - 1)] :
+    captions.text.split(/\s+/).slice(0, 3).join(' ');
 
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">
@@ -158,7 +176,7 @@ const Preview: React.FC<PreviewProps> = ({
           />
         )}
         
-        {/* Caption overlay */}
+        {/* Caption overlay - showing max 3 words per frame */}
         {displayText && (
           <div
             className={`absolute inset-x-0 px-4 text-center ${captionPositionClass}`}

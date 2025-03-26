@@ -221,6 +221,14 @@ const Index = () => {
     });
   };
 
+  const calculateTotalDuration = (): number => {
+    if (media.length === 0) return 0;
+    
+    return media.reduce((total, item) => {
+      return total + (item.duration || 5);
+    }, 0);
+  };
+
   if (isLoading) {
     return (
       <Layout>
@@ -233,6 +241,8 @@ const Index = () => {
       </Layout>
     );
   }
+
+  const totalMediaDuration = calculateTotalDuration();
 
   return (
     <Layout>
@@ -309,7 +319,6 @@ const Index = () => {
             <TextEditor
               initialSettings={captions}
               onChange={setCaptions}
-              maxLength={280}
             />
             
             <VoiceControls
@@ -329,6 +338,7 @@ const Index = () => {
               onExport={handleExport}
               processingProgress={processingState.progress}
               isProcessing={processingState.isProcessing}
+              totalMediaDuration={totalMediaDuration}
             />
           </div>
         </div>

@@ -10,6 +10,7 @@ interface ExportOptionsProps {
   onExport: () => void;
   processingProgress?: number;
   isProcessing: boolean;
+  totalMediaDuration?: number;
 }
 
 const ExportOptions: React.FC<ExportOptionsProps> = ({
@@ -19,6 +20,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   onExport,
   processingProgress = 0,
   isProcessing,
+  totalMediaDuration = 0,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -31,8 +33,8 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   };
 
   const getEstimatedTime = (): string => {
-    // Simple estimation based on quality and resolution
-    let baseTime = 20; // seconds
+    // More accurate estimation based on media duration
+    let baseTime = totalMediaDuration > 0 ? totalMediaDuration : 20; // seconds
     
     // Adjust for quality
     if (config.quality === "high") baseTime *= 3;
@@ -48,19 +50,44 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const downloadSampleVideo = () => {
+  const getEstimatedSize = (): string => {
+    // Base size calculation on duration and resolution
+    const durationFactor = totalMediaDuration > 0 ? totalMediaDuration / 60 : 1;
+    let baseSize = 10; // MB per minute for standard quality 720p
+    
+    // Adjust for resolution
+    if (videoConfig.resolution === "4K") baseSize *= 6;
+    else if (videoConfig.resolution === "1080p") baseSize *= 2.5;
+    
+    // Adjust for quality
+    if (config.quality === "high") baseSize *= 2;
+    else if (config.quality === "draft") baseSize *= 0.5;
+    
+    const estimatedSize = baseSize * durationFactor;
+    
+    if (estimatedSize > 1000) {
+      return `${(estimatedSize / 1000).toFixed(1)} GB`;
+    } else {
+      return `${Math.round(estimatedSize)} MB`;
+    }
+  };
+
+  const downloadVideo = () => {
     // For this demo, we're just downloading a placeholder video
     // In a real app, this would be the actual rendered video
     try {
       // Create a blob URL for a sample video (in production this would be your generated video)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `faceless-video-${timestamp}.${config.format}`;
+      
       const a = document.createElement('a');
       a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
-      a.download = `faceless-video-${new Date().getTime()}.${config.format}`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       
-      toast.success("Sample video downloaded successfully");
+      toast.success(`Downloaded video: ${filename}`);
     } catch (error) {
       console.error("Error downloading video:", error);
       toast.error("Failed to download video");
@@ -74,7 +101,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
     
     // When processing is done, trigger the download
     if (processingProgress === 100) {
-      downloadSampleVideo();
+      downloadVideo();
     }
   };
 
@@ -160,8 +187,16 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
             <div className="space-y-1">
               <label className="text-xs font-medium">Estimated Size</label>
               <div className="input-field py-1.5 text-sm">
-                {config.quality === "high" ? "40-60 MB" : config.quality === "standard" ? "15-30 MB" : "5-10 MB"}
+                {getEstimatedSize()}
               </div>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Output Duration</label>
+            <div className="input-field py-1.5 text-sm">
+              {totalMediaDuration > 0 ? 
+                `${Math.floor(totalMediaDuration / 60)}:${Math.floor(totalMediaDuration % 60).toString().padStart(2, '0')}` : 
+                "00:00"}
             </div>
           </div>
         </div>
@@ -175,7 +210,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 
         <button
           type="button"
-          onClick={isProcessing && processingProgress === 100 ? downloadSampleVideo : handleExport}
+          onClick={isProcessing && processingProgress === 100 ? downloadVideo : handleExport}
           disabled={isProcessing && processingProgress < 100}
           className="btn-primary w-full py-3 flex items-center justify-center"
         >

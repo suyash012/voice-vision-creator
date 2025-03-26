@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { CaptionSettings, FontOption, CaptionPosition, TextStyle } from "@/lib/types";
 
 interface TextEditorProps {
   initialSettings: CaptionSettings;
   onChange: (settings: CaptionSettings) => void;
-  maxLength?: number;
 }
 
 const FONT_OPTIONS: FontOption[] = [
@@ -24,15 +22,14 @@ const POSITION_OPTIONS: { label: string; value: CaptionPosition }[] = [
 
 const TextEditor: React.FC<TextEditorProps> = ({ 
   initialSettings, 
-  onChange, 
-  maxLength = 280 
+  onChange
 }) => {
   const [settings, setSettings] = useState<CaptionSettings>(initialSettings);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Update the text with character count limitation
+  // Update the text without character limitation
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = e.target.value.slice(0, maxLength);
+    const newText = e.target.value;
     updateSettings({ text: newText });
   };
 
@@ -68,9 +65,6 @@ const TextEditor: React.FC<TextEditorProps> = ({
           <label htmlFor="caption-text" className="text-sm font-medium">
             Caption Text
           </label>
-          <span className="text-xs text-muted-foreground">
-            {settings.text.length}/{maxLength}
-          </span>
         </div>
         <textarea
           ref={textAreaRef}
@@ -79,10 +73,9 @@ const TextEditor: React.FC<TextEditorProps> = ({
           onChange={handleTextChange}
           placeholder="Enter your caption text here..."
           className="input-field min-h-[100px] resize-none"
-          maxLength={maxLength}
         />
         <div className="text-xs text-muted-foreground">
-          Maximum 3 lines will be displayed at once
+          Maximum 3 words will be displayed per frame
         </div>
       </div>
 
