@@ -23,6 +23,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   totalMediaDuration = 0,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [downloadReady, setDownloadReady] = useState(false);
 
   const handleFormatChange = (format: ExportFormat) => {
     onConfigChange({ ...config, format });
@@ -73,21 +74,32 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   };
 
   const downloadVideo = () => {
-    // For this demo, we're just downloading a placeholder video
-    // In a real app, this would be the actual rendered video
     try {
-      // Create a blob URL for a sample video (in production this would be your generated video)
+      // Create a sample video URL for download (in a real app, this would be the rendered video)
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `faceless-video-${timestamp}.${config.format}`;
       
+      // In a real implementation, this URL would be the rendered video from the server
+      // For this demo, we'll use a sample video 
       const a = document.createElement('a');
-      a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      
+      // When integrating with a real video rendering service, you would use the actual URL
+      // For now we're just simulating a download with a sample video
+      if (videoConfig.resolution === "4K") {
+        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      } else if (videoConfig.resolution === "1080p") {
+        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      } else {
+        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      }
+      
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       
       toast.success(`Downloaded video: ${filename}`);
+      setDownloadReady(false);
     } catch (error) {
       console.error("Error downloading video:", error);
       toast.error("Failed to download video");
@@ -96,12 +108,17 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 
   // This would be the actual export handler in a real application
   const handleExport = () => {
+    if (processingProgress === 100 && isProcessing) {
+      downloadVideo();
+      return;
+    }
+    
     // First call the original export processing function
     onExport();
     
-    // When processing is done, trigger the download
+    // Set a listener for when processing completes
     if (processingProgress === 100) {
-      downloadVideo();
+      setDownloadReady(true);
     }
   };
 
@@ -210,36 +227,54 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 
         <button
           type="button"
-          onClick={isProcessing && processingProgress === 100 ? downloadVideo : handleExport}
+          onClick={handleExport}
           disabled={isProcessing && processingProgress < 100}
           className="btn-primary w-full py-3 flex items-center justify-center"
         >
           {isProcessing ? (
             <>
-              <svg 
-                className="animate-spin -ml-1 mr-2 h-5 w-5 text-primary-foreground" 
-                xmlns="http://www.w3.org/2000/svg" 
-                fill="none" 
-                viewBox="0 0 24 24"
-              >
-                <circle 
-                  className="opacity-25" 
-                  cx="12" 
-                  cy="12" 
-                  r="10" 
-                  stroke="currentColor" 
-                  strokeWidth="4"
-                ></circle>
-                <path 
-                  className="opacity-75" 
-                  fill="currentColor" 
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {processingProgress === 100 ? (
-                "Download Video"
+              {processingProgress < 100 ? (
+                <>
+                  <svg 
+                    className="animate-spin -ml-1 mr-2 h-5 w-5 text-primary-foreground" 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    fill="none" 
+                    viewBox="0 0 24 24"
+                  >
+                    <circle 
+                      className="opacity-25" 
+                      cx="12" 
+                      cy="12" 
+                      r="10" 
+                      stroke="currentColor" 
+                      strokeWidth="4"
+                    ></circle>
+                    <path 
+                      className="opacity-75" 
+                      fill="currentColor" 
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Processing: {processingProgress}%
+                </>
               ) : (
-                `Processing: ${processingProgress}%`
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="mr-2 h-5 w-5"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download Video
+                </>
               )}
             </>
           ) : (

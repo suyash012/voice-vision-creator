@@ -83,13 +83,14 @@ const Preview: React.FC<PreviewProps> = ({
   useEffect(() => {
     if (activeCaptionText) {
       // Split by word
-      const words = activeCaptionText.split(/\s+/);
+      const words = activeCaptionText.trim().split(/\s+/);
       // Chunk into groups of max 3 words
       const chunks: string[] = [];
       for (let i = 0; i < words.length; i += 3) {
         chunks.push(words.slice(i, i + 3).join(' '));
       }
       setCurrentCaptionWords(chunks);
+      console.log("Caption chunks created:", chunks);
     } else {
       setCurrentCaptionWords([]);
     }
@@ -99,14 +100,14 @@ const Preview: React.FC<PreviewProps> = ({
   useEffect(() => {
     if (currentCaptionWords.length > 0 && isPlayingAudio) {
       // Estimate the timing for each chunk of words
-      // This is a simplistic approach - in a real app you'd use actual timings from TTS API
-      const totalDuration = media.length * 5; // 5 seconds per media
+      const totalDuration = media.length > 0 ? media.length * 5 : 5; // 5 seconds per media
       const wordChunkDuration = totalDuration / currentCaptionWords.length;
       const currentWordIndex = Math.min(
         Math.floor(currentTime / wordChunkDuration),
         currentCaptionWords.length - 1
       );
       setDisplayedWordIndex(currentWordIndex);
+      console.log("Current word index:", currentWordIndex, "of", currentCaptionWords.length);
     } else if (!isPlayingAudio) {
       setDisplayedWordIndex(0);
     }
@@ -146,7 +147,7 @@ const Preview: React.FC<PreviewProps> = ({
   // Get the current caption text to display (3 words max per frame)
   const displayText = currentCaptionWords.length > 0 && isPlayingAudio 
     ? currentCaptionWords[displayedWordIndex] 
-    : '';
+    : captions.text.split(/\s+/).slice(0, 3).join(' '); // Show first 3 words when not playing
 
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">

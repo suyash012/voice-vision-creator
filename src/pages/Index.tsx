@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -156,10 +157,12 @@ const Index = () => {
   };
 
   const handleCaptionTimeUpdate = (currentTime: number, captionText: string) => {
+    console.log("Caption time update:", currentTime, captionText);
     setActiveCaptionText(captionText);
   };
 
   const handleAudioPlayingChange = (isPlaying: boolean) => {
+    console.log("Audio playing changed:", isPlaying);
     setIsPlayingAudio(isPlaying);
     
     if (isPlaying && !previewPausedRef.current) {
@@ -191,7 +194,7 @@ const Index = () => {
     
     let progress = 0;
     const interval = setInterval(() => {
-      progress += Math.random() * 15;
+      progress += Math.random() * 10;
       
       if (progress >= 100) {
         clearInterval(interval);
@@ -204,14 +207,14 @@ const Index = () => {
           });
           
           toast.success("Video ready to download!");
-        }, 1000);
+        }, 1500);
       } else {
         setProcessingState({
           isProcessing: true,
-          progress: Math.min(Math.round(progress), 100),
+          progress: Math.min(Math.round(progress), 99),
         });
       }
-    }, 1000);
+    }, 800);
   };
 
   const resetProcessingState = () => {
