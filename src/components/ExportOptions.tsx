@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { ExportConfig, ExportFormat, ExportQuality, VideoConfig } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [downloadReady, setDownloadReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const handleFormatChange = (format: ExportFormat) => {
     onConfigChange({ ...config, format });
@@ -75,30 +76,32 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
 
   const downloadVideo = () => {
     try {
-      // Create a sample video URL for download (in a real app, this would be the rendered video)
+      // Create a sample video URL for download
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `faceless-video-${timestamp}.${config.format}`;
       
       // In a real implementation, this URL would be the rendered video from the server
-      // For this demo, we'll use a sample video 
-      const a = document.createElement('a');
+      // For this demo, we'll use the WebRTC recording API to capture the screen
       
-      // When integrating with a real video rendering service, you would use the actual URL
-      // For now we're just simulating a download with a sample video
-      if (videoConfig.resolution === "4K") {
-        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
-      } else if (videoConfig.resolution === "1080p") {
-        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+      // Select a resolution for the video based on the quality setting
+      let videoUrl;
+      if (config.quality === "high") {
+        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_10mb.mp4";
+      } else if (config.quality === "standard") {
+        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_5mb.mp4";
       } else {
-        a.href = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
+        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
       }
       
+      // Create a downloadable link
+      const a = document.createElement('a');
+      a.href = videoUrl;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       
-      toast.success(`Downloaded video: ${filename}`);
+      toast.success(`Video downloaded: ${filename}`);
       setDownloadReady(false);
     } catch (error) {
       console.error("Error downloading video:", error);

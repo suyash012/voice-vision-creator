@@ -32,8 +32,9 @@ const Preview: React.FC<PreviewProps> = ({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
-  const [currentCaptionWords, setCurrentCaptionWords] = useState<string[]>([]);
+  const [currentSentenceWords, setCurrentSentenceWords] = useState<string[]>([]);
   const [displayedWordIndex, setDisplayedWordIndex] = useState(0);
+  const [currentDisplayedWords, setCurrentDisplayedWords] = useState<string>("");
   
   // Calculate aspect ratio dimensions
   const getAspectRatioDimensions = (ratio: AspectRatio, containerWidth: number): { width: number, height: number } => {
@@ -79,39 +80,49 @@ const Preview: React.FC<PreviewProps> = ({
     }
   }, [currentTime, media]);
 
-  // Process captions to split into 3-word chunks
+  // Process caption text into words for synchronized display
   useEffect(() => {
     if (activeCaptionText) {
-      // Split by word
-      const words = activeCaptionText.trim().split(/\s+/);
-      // Chunk into groups of max 3 words
+      // Split the entire caption text into words
+      const allWords = activeCaptionText.trim().split(/\s+/);
+      
+      // Group words into chunks of 3 for display
       const chunks: string[] = [];
-      for (let i = 0; i < words.length; i += 3) {
-        chunks.push(words.slice(i, i + 3).join(' '));
+      for (let i = 0; i < allWords.length; i += 3) {
+        chunks.push(allWords.slice(i, i + 3).join(' '));
       }
-      setCurrentCaptionWords(chunks);
+      
+      setCurrentSentenceWords(chunks);
       console.log("Caption chunks created:", chunks);
     } else {
-      setCurrentCaptionWords([]);
+      setCurrentSentenceWords([]);
     }
   }, [activeCaptionText]);
 
-  // Update displayed word index based on time
+  // Update displayed words based on playback time
   useEffect(() => {
-    if (currentCaptionWords.length > 0 && isPlayingAudio) {
-      // Estimate the timing for each chunk of words
-      const totalDuration = media.length > 0 ? media.length * 5 : 5; // 5 seconds per media
-      const wordChunkDuration = totalDuration / currentCaptionWords.length;
-      const currentWordIndex = Math.min(
+    if (currentSentenceWords.length > 0 && isPlayingAudio) {
+      // Calculate timing for word display
+      const totalDuration = media.length > 0 ? media.length * 5 : 5; // Estimate 5 seconds per media
+      const wordChunkDuration = totalDuration / currentSentenceWords.length;
+      
+      // Calculate current word chunk to display
+      const currentIndex = Math.min(
         Math.floor(currentTime / wordChunkDuration),
-        currentCaptionWords.length - 1
+        currentSentenceWords.length - 1
       );
-      setDisplayedWordIndex(currentWordIndex);
-      console.log("Current word index:", currentWordIndex, "of", currentCaptionWords.length);
+      
+      if (currentIndex !== displayedWordIndex) {
+        setDisplayedWordIndex(currentIndex);
+        setCurrentDisplayedWords(currentSentenceWords[currentIndex]);
+        console.log("Displaying words:", currentSentenceWords[currentIndex], "index:", currentIndex);
+      }
     } else if (!isPlayingAudio) {
+      // When not playing, show first chunk or default text
       setDisplayedWordIndex(0);
+      setCurrentDisplayedWords(currentSentenceWords[0] || captions.text.split(/\s+/).slice(0, 3).join(' '));
     }
-  }, [currentTime, currentCaptionWords, isPlayingAudio, media.length]);
+  }, [currentTime, currentSentenceWords, isPlayingAudio, media.length, captions.text, displayedWordIndex]);
 
   // Get current media to display
   const currentMedia = media.length > 0 ? media[currentMediaIndex] : null;
@@ -143,11 +154,6 @@ const Preview: React.FC<PreviewProps> = ({
   // Calculate total duration and progress
   const totalDuration = media.length * 5; // 5 seconds per media
   const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
-
-  // Get the current caption text to display (3 words max per frame)
-  const displayText = currentCaptionWords.length > 0 && isPlayingAudio 
-    ? currentCaptionWords[displayedWordIndex] 
-    : captions.text.split(/\s+/).slice(0, 3).join(' '); // Show first 3 words when not playing
 
   return (
     <div ref={containerRef} className="glass-panel w-full overflow-hidden">
@@ -196,7 +202,7 @@ const Preview: React.FC<PreviewProps> = ({
         )}
         
         {/* Caption overlay - showing max 3 words per frame */}
-        {displayText && (
+        {currentDisplayedWords && (
           <div
             className={`absolute inset-x-0 px-4 text-center ${captionPositionClass}`}
           >
@@ -204,7 +210,7 @@ const Preview: React.FC<PreviewProps> = ({
               className="inline-block max-w-[90%] bg-black/40 backdrop-blur-sm px-3 py-2 rounded-md"
               style={captionStyle}
             >
-              {displayText}
+              {currentDisplayedWords}
             </div>
           </div>
         )}
