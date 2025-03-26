@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -85,6 +84,7 @@ const Index = () => {
   const animationFrameRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
   const previewPausedRef = useRef<boolean>(false);
+  const captionsDataRef = useRef<{text: string, startTime: number, endTime: number}[]>([]);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -159,6 +159,16 @@ const Index = () => {
   const handleCaptionTimeUpdate = (currentTime: number, captionText: string) => {
     console.log("Caption time update:", currentTime, captionText);
     setActiveCaptionText(captionText);
+    
+    if (captionText && currentTime >= 0) {
+      if (!captionsDataRef.current.some(c => c.text === captionText && Math.abs(c.startTime - currentTime) < 0.1)) {
+        captionsDataRef.current.push({
+          text: captionText,
+          startTime: currentTime,
+          endTime: currentTime + 2
+        });
+      }
+    }
   };
 
   const handleAudioPlayingChange = (isPlaying: boolean) => {
@@ -167,6 +177,7 @@ const Index = () => {
     
     if (isPlaying && !previewPausedRef.current) {
       setCurrentTime(0);
+      captionsDataRef.current = [];
     }
     
     previewPausedRef.current = !isPlaying;
@@ -193,28 +204,28 @@ const Index = () => {
     });
     
     let progress = 0;
+    const totalSteps = 100;
+    const processingTime = Math.min(15000, 5000 + (media.length * 1000));
     const interval = setInterval(() => {
-      progress += Math.random() * 10;
+      progress += 100 / (processingTime / 200);
       
       if (progress >= 100) {
         clearInterval(interval);
         progress = 100;
         
-        setTimeout(() => {
-          setProcessingState({
-            isProcessing: true,
-            progress: 100,
-          });
-          
-          toast.success("Video ready to download!");
-        }, 1500);
+        setProcessingState({
+          isProcessing: true,
+          progress: 100,
+        });
+        
+        toast.success("Video ready to download!");
       } else {
         setProcessingState({
           isProcessing: true,
           progress: Math.min(Math.round(progress), 99),
         });
       }
-    }, 800);
+    }, 200);
   };
 
   const resetProcessingState = () => {

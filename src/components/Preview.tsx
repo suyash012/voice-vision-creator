@@ -32,9 +32,6 @@ const Preview: React.FC<PreviewProps> = ({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
-  const [currentSentenceWords, setCurrentSentenceWords] = useState<string[]>([]);
-  const [displayedWordIndex, setDisplayedWordIndex] = useState(0);
-  const [currentDisplayedWords, setCurrentDisplayedWords] = useState<string>("");
   
   // Calculate aspect ratio dimensions
   const getAspectRatioDimensions = (ratio: AspectRatio, containerWidth: number): { width: number, height: number } => {
@@ -80,52 +77,19 @@ const Preview: React.FC<PreviewProps> = ({
     }
   }, [currentTime, media]);
 
-  // Process caption text into words for synchronized display
-  useEffect(() => {
-    if (activeCaptionText) {
-      // Split the entire caption text into words
-      const allWords = activeCaptionText.trim().split(/\s+/);
-      
-      // Group words into chunks of 3 for display
-      const chunks: string[] = [];
-      for (let i = 0; i < allWords.length; i += 3) {
-        chunks.push(allWords.slice(i, i + 3).join(' '));
-      }
-      
-      setCurrentSentenceWords(chunks);
-      console.log("Caption chunks created:", chunks);
-    } else {
-      setCurrentSentenceWords([]);
-    }
-  }, [activeCaptionText]);
-
-  // Update displayed words based on playback time
-  useEffect(() => {
-    if (currentSentenceWords.length > 0 && isPlayingAudio) {
-      // Calculate timing for word display
-      const totalDuration = media.length > 0 ? media.length * 5 : 5; // Estimate 5 seconds per media
-      const wordChunkDuration = totalDuration / currentSentenceWords.length;
-      
-      // Calculate current word chunk to display
-      const currentIndex = Math.min(
-        Math.floor(currentTime / wordChunkDuration),
-        currentSentenceWords.length - 1
-      );
-      
-      if (currentIndex !== displayedWordIndex) {
-        setDisplayedWordIndex(currentIndex);
-        setCurrentDisplayedWords(currentSentenceWords[currentIndex]);
-        console.log("Displaying words:", currentSentenceWords[currentIndex], "index:", currentIndex);
-      }
-    } else if (!isPlayingAudio) {
-      // When not playing, show first chunk or default text
-      setDisplayedWordIndex(0);
-      setCurrentDisplayedWords(currentSentenceWords[0] || captions.text.split(/\s+/).slice(0, 3).join(' '));
-    }
-  }, [currentTime, currentSentenceWords, isPlayingAudio, media.length, captions.text, displayedWordIndex]);
-
   // Get current media to display
   const currentMedia = media.length > 0 ? media[currentMediaIndex] : null;
+
+  // Format caption text for optimal readability
+  const formatCaptionText = (text: string | undefined): string[] => {
+    if (!text || text.trim() === '') return [];
+    
+    // Return the text as-is - it's already formatted by VoiceControls
+    return [text];
+  };
+
+  // Format caption lines for display
+  const captionLines = formatCaptionText(activeCaptionText);
 
   // Build caption style based on settings
   const captionStyle = {
@@ -135,6 +99,8 @@ const Preview: React.FC<PreviewProps> = ({
     opacity: captions.opacity / 100,
     fontWeight: captions.textStyle.bold ? "bold" : "normal",
     fontStyle: captions.textStyle.italic ? "italic" : "normal",
+    textShadow: "0px 1px 2px rgba(0,0,0,0.8)", // Add text shadow for better readability
+    lineHeight: 1.3,
   };
 
   // Determine position class for caption
@@ -201,8 +167,8 @@ const Preview: React.FC<PreviewProps> = ({
           />
         )}
         
-        {/* Caption overlay - showing max 3 words per frame */}
-        {currentDisplayedWords && (
+        {/* Caption overlay - showing subtitle text with proper formatting */}
+        {captionLines.length > 0 && (
           <div
             className={`absolute inset-x-0 px-4 text-center ${captionPositionClass}`}
           >
@@ -210,7 +176,11 @@ const Preview: React.FC<PreviewProps> = ({
               className="inline-block max-w-[90%] bg-black/40 backdrop-blur-sm px-3 py-2 rounded-md"
               style={captionStyle}
             >
-              {currentDisplayedWords}
+              {captionLines.map((line, index) => (
+                <div key={index} className="subtitle-line">
+                  {line}
+                </div>
+              ))}
             </div>
           </div>
         )}

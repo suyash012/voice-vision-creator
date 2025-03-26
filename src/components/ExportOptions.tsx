@@ -1,6 +1,6 @@
 
-import React, { useState, useRef } from "react";
-import { ExportConfig, ExportFormat, ExportQuality, VideoConfig } from "@/lib/types";
+import React, { useState } from "react";
+import { ExportConfig, VideoConfig } from "@/lib/types";
 import { toast } from "sonner";
 
 interface ExportOptionsProps {
@@ -8,9 +8,9 @@ interface ExportOptionsProps {
   videoConfig: VideoConfig;
   onConfigChange: (config: ExportConfig) => void;
   onExport: () => void;
-  processingProgress?: number;
+  processingProgress: number;
   isProcessing: boolean;
-  totalMediaDuration?: number;
+  totalMediaDuration: number;
 }
 
 const ExportOptions: React.FC<ExportOptionsProps> = ({
@@ -18,288 +18,220 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   videoConfig,
   onConfigChange,
   onExport,
-  processingProgress = 0,
+  processingProgress,
   isProcessing,
-  totalMediaDuration = 0,
+  totalMediaDuration,
 }) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [downloadReady, setDownloadReady] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
 
-  const handleFormatChange = (format: ExportFormat) => {
-    onConfigChange({ ...config, format });
+  const updateConfig = (newConfig: Partial<ExportConfig>) => {
+    onConfigChange({ ...config, ...newConfig });
   };
 
-  const handleQualityChange = (quality: ExportQuality) => {
-    onConfigChange({ ...config, quality });
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? "0" + secs : secs}`;
   };
-
-  const getEstimatedTime = (): string => {
-    // More accurate estimation based on media duration
-    let baseTime = totalMediaDuration > 0 ? totalMediaDuration : 20; // seconds
-    
-    // Adjust for quality
-    if (config.quality === "high") baseTime *= 3;
-    else if (config.quality === "standard") baseTime *= 1.5;
-    
-    // Adjust for resolution
-    if (videoConfig.resolution === "4K") baseTime *= 4;
-    else if (videoConfig.resolution === "1080p") baseTime *= 2;
-    
-    // Format as mm:ss
-    const minutes = Math.floor(baseTime / 60);
-    const seconds = Math.floor(baseTime % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
-
-  const getEstimatedSize = (): string => {
-    // Base size calculation on duration and resolution
-    const durationFactor = totalMediaDuration > 0 ? totalMediaDuration / 60 : 1;
-    let baseSize = 10; // MB per minute for standard quality 720p
-    
-    // Adjust for resolution
-    if (videoConfig.resolution === "4K") baseSize *= 6;
-    else if (videoConfig.resolution === "1080p") baseSize *= 2.5;
-    
-    // Adjust for quality
-    if (config.quality === "high") baseSize *= 2;
-    else if (config.quality === "draft") baseSize *= 0.5;
-    
-    const estimatedSize = baseSize * durationFactor;
-    
-    if (estimatedSize > 1000) {
-      return `${(estimatedSize / 1000).toFixed(1)} GB`;
-    } else {
-      return `${Math.round(estimatedSize)} MB`;
-    }
-  };
-
-  const downloadVideo = () => {
-    try {
-      // Create a sample video URL for download
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `faceless-video-${timestamp}.${config.format}`;
+  
+  const estimateFileSize = (): string => {
+    // Very rough file size estimation based on resolution, duration and quality
+    const resolutionFactor = 
+      videoConfig.resolution === "4K" ? 8 : 
+      videoConfig.resolution === "1080p" ? 2 : 1;
       
-      // In a real implementation, this URL would be the rendered video from the server
-      // For this demo, we'll use the WebRTC recording API to capture the screen
+    const qualityFactor = 
+      config.quality === "high" ? 1.8 :
+      config.quality === "standard" ? 1 : 0.7;
       
-      // Select a resolution for the video based on the quality setting
-      let videoUrl;
-      if (config.quality === "high") {
-        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_10mb.mp4";
-      } else if (config.quality === "standard") {
-        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_5mb.mp4";
-      } else {
-        videoUrl = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4";
-      }
-      
-      // Create a downloadable link
-      const a = document.createElement('a');
-      a.href = videoUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      toast.success(`Video downloaded: ${filename}`);
-      setDownloadReady(false);
-    } catch (error) {
-      console.error("Error downloading video:", error);
-      toast.error("Failed to download video");
-    }
+    // Base bitrate: ~2 MB per minute at 720p standard quality
+    const baseSizeMBPerMinute = 2; 
+    
+    const estimatedSizeMB = (
+      totalMediaDuration / 60 * 
+      baseSizeMBPerMinute * 
+      resolutionFactor * 
+      qualityFactor
+    );
+    
+    return estimatedSizeMB < 1 
+      ? `${Math.round(estimatedSizeMB * 1000)} KB` 
+      : `${estimatedSizeMB.toFixed(1)} MB`;
   };
 
-  // This would be the actual export handler in a real application
-  const handleExport = () => {
-    if (processingProgress === 100 && isProcessing) {
-      downloadVideo();
-      return;
-    }
+  const handleDownload = () => {
+    // Create a sample video URL for demonstration purposes
+    // In a real app, this would be the URL of the generated video
+    const dummyVideoUrl = URL.createObjectURL(new Blob([], { type: 'video/mp4' }));
     
-    // First call the original export processing function
-    onExport();
+    // Create a download link
+    const a = document.createElement('a');
+    a.href = dummyVideoUrl;
+    a.download = `faceless-video-${Date.now()}.${config.format}`;
+    document.body.appendChild(a);
+    a.click();
     
-    // Set a listener for when processing completes
-    if (processingProgress === 100) {
-      setDownloadReady(true);
-    }
+    // Clean up
+    document.body.removeChild(a);
+    URL.revokeObjectURL(dummyVideoUrl);
+    
+    toast.success("Video downloaded successfully!");
+    setShowDownloadOptions(false);
   };
 
   return (
     <div className="glass-panel p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-medium">Export Options</h3>
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {showAdvanced ? "Hide Advanced" : "Show Advanced"}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
+      <h3 className="text-base font-medium">Export Options</h3>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Format</label>
-          <div className="flex space-x-2">
-            <button
-              type="button"
-              onClick={() => handleFormatChange("mp4")}
-              className={`btn-accent flex-1 ${config.format === "mp4" ? "bg-primary text-primary-foreground" : ""}`}
-            >
-              MP4
-            </button>
-            <button
-              type="button"
-              onClick={() => handleFormatChange("webm")}
-              className={`btn-accent flex-1 ${config.format === "webm" ? "bg-primary text-primary-foreground" : ""}`}
-            >
-              WebM
-            </button>
-          </div>
+          <label htmlFor="format-select" className="text-sm font-medium">
+            Format
+          </label>
+          <select
+            id="format-select"
+            value={config.format}
+            onChange={(e) => updateConfig({ format: e.target.value as any })}
+            className="input-field"
+          >
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
         </div>
-
+        
         <div className="space-y-2">
-          <label className="text-sm font-medium">Quality</label>
-          <div className="flex space-x-2">
-            <button
-              type="button"
-              onClick={() => handleQualityChange("draft")}
-              className={`btn-accent flex-1 ${config.quality === "draft" ? "bg-primary text-primary-foreground" : ""}`}
-            >
-              Draft
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQualityChange("standard")}
-              className={`btn-accent flex-1 ${config.quality === "standard" ? "bg-primary text-primary-foreground" : ""}`}
-            >
-              Standard
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQualityChange("high")}
-              className={`btn-accent flex-1 ${config.quality === "high" ? "bg-primary text-primary-foreground" : ""}`}
-            >
-              High
-            </button>
-          </div>
+          <label htmlFor="quality-select" className="text-sm font-medium">
+            Quality
+          </label>
+          <select
+            id="quality-select"
+            value={config.quality}
+            onChange={(e) => updateConfig({ quality: e.target.value as any })}
+            className="input-field"
+          >
+            <option value="draft">Draft (Faster)</option>
+            <option value="standard">Standard</option>
+            <option value="high">High Quality (Slower)</option>
+          </select>
         </div>
       </div>
-
-      {showAdvanced && (
-        <div className="space-y-3 pt-2 border-t border-border">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Resolution</label>
-              <div className="input-field py-1.5 text-sm">{videoConfig.resolution}</div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Frame Rate</label>
-              <div className="input-field py-1.5 text-sm">{videoConfig.frameRate} fps</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Aspect Ratio</label>
-              <div className="input-field py-1.5 text-sm">{videoConfig.aspectRatio}</div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Estimated Size</label>
-              <div className="input-field py-1.5 text-sm">
-                {getEstimatedSize()}
-              </div>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium">Output Duration</label>
-            <div className="input-field py-1.5 text-sm">
-              {totalMediaDuration > 0 ? 
-                `${Math.floor(totalMediaDuration / 60)}:${Math.floor(totalMediaDuration % 60).toString().padStart(2, '0')}` : 
-                "00:00"}
-            </div>
-          </div>
+      
+      <div className="grid grid-cols-2 gap-4 mt-2">
+        <div>
+          <div className="text-sm text-muted-foreground">Resolution</div>
+          <div className="font-medium">{videoConfig.resolution}</div>
         </div>
-      )}
-
-      <div className="space-y-2 pt-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm">Estimated rendering time:</span>
-          <span className="text-sm font-medium">{getEstimatedTime()}</span>
+        <div>
+          <div className="text-sm text-muted-foreground">Duration</div>
+          <div className="font-medium">{formatDuration(totalMediaDuration)}</div>
         </div>
-
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={isProcessing && processingProgress < 100}
-          className="btn-primary w-full py-3 flex items-center justify-center"
-        >
-          {isProcessing ? (
-            <>
-              {processingProgress < 100 ? (
-                <>
-                  <svg 
-                    className="animate-spin -ml-1 mr-2 h-5 w-5 text-primary-foreground" 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    fill="none" 
-                    viewBox="0 0 24 24"
-                  >
-                    <circle 
-                      className="opacity-25" 
-                      cx="12" 
-                      cy="12" 
-                      r="10" 
-                      stroke="currentColor" 
-                      strokeWidth="4"
-                    ></circle>
-                    <path 
-                      className="opacity-75" 
-                      fill="currentColor" 
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Processing: {processingProgress}%
-                </>
-              ) : (
-                <>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="mr-2 h-5 w-5"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Download Video
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mr-2 h-5 w-5"
+        <div>
+          <div className="text-sm text-muted-foreground">Format</div>
+          <div className="font-medium uppercase">{config.format}</div>
+        </div>
+        <div>
+          <div className="text-sm text-muted-foreground">Est. Size</div>
+          <div className="font-medium">{estimateFileSize()}</div>
+        </div>
+      </div>
+      
+      {isProcessing ? (
+        <div className="space-y-3">
+          <div className="flex justify-between text-sm">
+            <span>Processing video...</span>
+            <span>{processingProgress}%</span>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-primary transition-all" 
+              style={{ width: `${processingProgress}%` }}
+            ></div>
+          </div>
+          
+          {processingProgress === 100 && (
+            <div className="pt-2">
+              <button 
+                type="button" 
+                onClick={() => setShowDownloadOptions(true)}
+                className="btn-primary w-full"
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Generate & Download Video
-            </>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mr-2 h-4 w-4"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download Video
+              </button>
+              
+              {showDownloadOptions && (
+                <div className="mt-3 p-3 bg-card rounded-md border">
+                  <div className="mb-2 text-sm font-medium">Download options</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button 
+                      type="button" 
+                      onClick={handleDownload}
+                      className="btn-accent flex justify-between items-center"
+                    >
+                      <span>Video with captions (MP4)</span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-4 w-4"
+                      >
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
+        </div>
+      ) : (
+        <button 
+          type="button" 
+          onClick={onExport} 
+          className="btn-primary w-full mt-2"
+          disabled={totalMediaDuration === 0}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="mr-2 h-4 w-4"
+          >
+            <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+            <path d="M12 12v9" />
+            <path d="m8 17 4 4 4-4" />
+          </svg>
+          Generate Video
         </button>
+      )}
+      
+      <div className="text-xs text-muted-foreground text-center pt-1">
+        {isProcessing 
+          ? "This may take a few minutes depending on video length and quality" 
+          : "Make sure to add media and captions before exporting"}
       </div>
     </div>
   );

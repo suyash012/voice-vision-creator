@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
@@ -96,36 +97,94 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
     }
   }, [audioUrl]);
 
-  const generateSentenceTimings = (text: string, durationEstimate: number) => {
+  // Function to format text into proper subtitle format
+  const formatSubtitleText = (text: string): string => {
+    // Trim whitespace
+    text = text.trim();
+    
+    // Limit line length to 42 characters
+    const MAX_CHARS_PER_LINE = 42;
+    
+    if (text.length <= MAX_CHARS_PER_LINE) {
+      return text;
+    }
+    
+    // Try to break at natural points (spaces, commas, etc.)
+    const breakPoints = [' ', ',', '.', ':', ';', '-', '—'];
+    let bestBreakPoint = MAX_CHARS_PER_LINE;
+    
+    for (let i = MAX_CHARS_PER_LINE; i >= MAX_CHARS_PER_LINE - 10; i--) {
+      if (i < text.length && breakPoints.includes(text[i])) {
+        bestBreakPoint = i + 1; // Include the space/punctuation in the first line
+        break;
+      }
+    }
+    
+    // If we can't find a good break point, just break at MAX_CHARS_PER_LINE
+    return text.slice(0, bestBreakPoint).trim();
+  };
+
+  // Improved function to generate frame-accurate subtitle timings
+  const generateSubtitleTimings = (text: string, durationEstimate: number) => {
     if (!text) return [];
     
-    // Improved sentence detection regex to handle multiple punctuation types
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    // Improved sentence detection regex
+    const sentences = text.split(/(?<=[.!?;:])\s+/);
     const timings: {start: number; end: number; text: string}[] = [];
     
     let currentTime = 0;
     const totalTextLength = text.length;
+    const AVG_CHARS_PER_SECOND = 15; // Average reading speed
     
-    sentences.forEach((sentence) => {
+    sentences.forEach((sentence, idx) => {
       const trimmedSentence = sentence.trim();
       if (!trimmedSentence) return;
       
-      // Estimate duration based on sentence length relative to total text
-      const sentenceLength = trimmedSentence.length;
-      const percentOfTotal = sentenceLength / totalTextLength;
+      // Count actual words for more accurate timing
+      const words = trimmedSentence.split(/\s+/);
       
-      // Calculate sentence duration as percentage of total duration
-      // Applying speed factor and adding a small buffer for pauses between sentences
-      const sentenceDuration = (durationEstimate * percentOfTotal) / (settings.speed || 1) + 0.2;
+      // Process words in groups of 2-3 for subtitle frames
+      for (let i = 0; i < words.length; i += 3) {
+        const frameWords = words.slice(i, i + 3);
+        const subtitleText = frameWords.join(' ');
+        
+        // Calculate duration based on character count
+        const charCount = subtitleText.length;
+        const frameDuration = Math.max(0.8, charCount / AVG_CHARS_PER_SECOND);
+        
+        // Add a small gap between sentence frames
+        const isLastFrameInSentence = i + 3 >= words.length;
+        const pauseFactor = isLastFrameInSentence ? 1.2 : 1.0;
+        
+        // Apply speed settings
+        const adjustedDuration = (frameDuration * pauseFactor) / (settings.speed || 1);
+        
+        const formattedText = formatSubtitleText(subtitleText);
+        
+        timings.push({
+          start: currentTime,
+          end: currentTime + adjustedDuration,
+          text: formattedText
+        });
+        
+        currentTime += adjustedDuration;
+      }
       
-      timings.push({
-        start: currentTime,
-        end: currentTime + sentenceDuration,
-        text: trimmedSentence
-      });
-      
-      currentTime += sentenceDuration;
+      // Add a small gap between sentences
+      if (idx < sentences.length - 1) {
+        currentTime += 0.3 / (settings.speed || 1);
+      }
     });
+    
+    // Adjust timings to match total audio duration
+    if (timings.length > 0 && durationEstimate > 0) {
+      const scaleFactor = durationEstimate / currentTime;
+      return timings.map(timing => ({
+        start: timing.start * scaleFactor,
+        end: timing.end * scaleFactor,
+        text: timing.text
+      }));
+    }
     
     return timings;
   };
@@ -149,6 +208,11 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
         }
         return;
       }
+    }
+    
+    // If we're between captions, clear the text
+    if (onCaptionTimeUpdate && currentTime > 0) {
+      onCaptionTimeUpdate(currentTime, "");
     }
   };
 
@@ -242,8 +306,8 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       // Get approximate duration from blob size (rough estimate)
       const estimatedDuration = (audioBlob.size / 32000) * settings.speed; // rough estimate based on 32kbps audio
       
-      // Generate timings for sentence-by-sentence display
-      const timings = generateSentenceTimings(textToVoice, estimatedDuration);
+      // Generate timings for frame-accurate subtitles
+      const timings = generateSubtitleTimings(textToVoice, estimatedDuration);
       setCaptionTimings(timings);
       setCurrentCaptionIndex(0);
       
