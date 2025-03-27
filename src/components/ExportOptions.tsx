@@ -60,23 +60,53 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
   };
 
   const handleDownload = () => {
-    // Create a sample video URL for demonstration purposes
-    // In a real app, this would be the URL of the generated video
-    const dummyVideoUrl = URL.createObjectURL(new Blob([], { type: 'video/mp4' }));
+    console.log("Creating video download");
     
-    // Create a download link
-    const a = document.createElement('a');
-    a.href = dummyVideoUrl;
-    a.download = `faceless-video-${Date.now()}.${config.format}`;
-    document.body.appendChild(a);
-    a.click();
+    // In a real application, we would fetch the actual video URL from the backend
+    // For this demo, we'll create a dummy video blob with some basic content
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
     
-    // Clean up
-    document.body.removeChild(a);
-    URL.revokeObjectURL(dummyVideoUrl);
+    // Create a basic video frame
+    if (ctx) {
+      // Fill with black background
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Add some text
+      ctx.fillStyle = '#fff';
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Faceless Video Creator', canvas.width/2, canvas.height/2 - 50);
+      ctx.fillText('Demo Export', canvas.width/2, canvas.height/2);
+      ctx.fillText(`Format: ${config.format.toUpperCase()}`, canvas.width/2, canvas.height/2 + 50);
+      ctx.fillText(`Quality: ${config.quality}`, canvas.width/2, canvas.height/2 + 100);
+    }
     
-    toast.success("Video downloaded successfully!");
-    setShowDownloadOptions(false);
+    // Convert canvas to blob
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error("Failed to create video file");
+        return;
+      }
+      
+      // Create a download link for the blob
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faceless-video-${Date.now()}.${config.format}`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success("Video downloaded successfully!");
+      setShowDownloadOptions(false);
+    }, `video/${config.format}`, 0.95);
   };
 
   return (
@@ -181,7 +211,7 @@ const ExportOptions: React.FC<ExportOptionsProps> = ({
                       onClick={handleDownload}
                       className="btn-accent flex justify-between items-center"
                     >
-                      <span>Video with captions (MP4)</span>
+                      <span>Video with captions ({config.format.toUpperCase()})</span>
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"

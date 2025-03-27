@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
@@ -38,6 +37,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   const [captionTimings, setCaptionTimings] = useState<{start: number; end: number; text: string}[]>([]);
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastCaptionTextRef = useRef<string>('');
   
   const updateSettings = (newSettings: Partial<VoiceSettings>) => {
     onUpdate({ ...settings, ...newSettings });
@@ -69,6 +69,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
         audioRef.current.removeEventListener('ended', handleAudioEnded);
         audioRef.current.removeEventListener('play', handleAudioPlay);
         audioRef.current.removeEventListener('pause', handleAudioPause);
+        audioRef.current.pause();
       }
       document.removeEventListener('toggle-audio-playback', handleTogglePlayback);
     };
@@ -76,6 +77,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
 
   // Handle audio play event
   const handleAudioPlay = () => {
+    console.log("Audio started playing");
     setIsPlaying(true);
     if (onPlayingChange) {
       onPlayingChange(true);
@@ -84,6 +86,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   
   // Handle audio pause event
   const handleAudioPause = () => {
+    console.log("Audio paused");
     setIsPlaying(false);
     if (onPlayingChange) {
       onPlayingChange(false);
@@ -94,98 +97,58 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   useEffect(() => {
     if (audioUrl && audioRef.current) {
       audioRef.current.src = audioUrl;
+      console.log("Audio URL updated:", audioUrl);
     }
   }, [audioUrl]);
 
-  // Function to format text into proper subtitle format
-  const formatSubtitleText = (text: string): string => {
-    // Trim whitespace
-    text = text.trim();
+  // Function to split text into optimal subtitle segments
+  const splitTextIntoSegments = (text: string): string[] => {
+    if (!text) return [];
     
-    // Limit line length to 42 characters
-    const MAX_CHARS_PER_LINE = 42;
+    // Split text into words
+    const words = text.split(/\s+/).filter(w => w.length > 0);
+    const segments: string[] = [];
     
-    if (text.length <= MAX_CHARS_PER_LINE) {
-      return text;
-    }
-    
-    // Try to break at natural points (spaces, commas, etc.)
-    const breakPoints = [' ', ',', '.', ':', ';', '-', '—'];
-    let bestBreakPoint = MAX_CHARS_PER_LINE;
-    
-    for (let i = MAX_CHARS_PER_LINE; i >= MAX_CHARS_PER_LINE - 10; i--) {
-      if (i < text.length && breakPoints.includes(text[i])) {
-        bestBreakPoint = i + 1; // Include the space/punctuation in the first line
-        break;
+    // Group words into segments of 2-3 words each
+    for (let i = 0; i < words.length; i += 3) {
+      const segmentWords = words.slice(i, i + 3);
+      if (segmentWords.length > 0) {
+        segments.push(segmentWords.join(' '));
       }
     }
     
-    // If we can't find a good break point, just break at MAX_CHARS_PER_LINE
-    return text.slice(0, bestBreakPoint).trim();
+    return segments;
   };
 
   // Improved function to generate frame-accurate subtitle timings
   const generateSubtitleTimings = (text: string, durationEstimate: number) => {
     if (!text) return [];
     
-    // Improved sentence detection regex
-    const sentences = text.split(/(?<=[.!?;:])\s+/);
+    console.log("Generating subtitle timings for:", text);
+    console.log("Estimated duration:", durationEstimate);
+    
+    // Split text into segments (2-3 words per segment)
+    const segments = splitTextIntoSegments(text);
+    console.log("Text segments:", segments);
+    
     const timings: {start: number; end: number; text: string}[] = [];
     
-    let currentTime = 0;
-    const totalTextLength = text.length;
-    const AVG_CHARS_PER_SECOND = 15; // Average reading speed
+    // Calculate time per segment
+    const timePerSegment = durationEstimate / segments.length;
     
-    sentences.forEach((sentence, idx) => {
-      const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) return;
+    // Generate timing for each segment
+    segments.forEach((segment, index) => {
+      const start = index * timePerSegment;
+      const end = (index + 1) * timePerSegment;
       
-      // Count actual words for more accurate timing
-      const words = trimmedSentence.split(/\s+/);
-      
-      // Process words in groups of 2-3 for subtitle frames
-      for (let i = 0; i < words.length; i += 3) {
-        const frameWords = words.slice(i, i + 3);
-        const subtitleText = frameWords.join(' ');
-        
-        // Calculate duration based on character count
-        const charCount = subtitleText.length;
-        const frameDuration = Math.max(0.8, charCount / AVG_CHARS_PER_SECOND);
-        
-        // Add a small gap between sentence frames
-        const isLastFrameInSentence = i + 3 >= words.length;
-        const pauseFactor = isLastFrameInSentence ? 1.2 : 1.0;
-        
-        // Apply speed settings
-        const adjustedDuration = (frameDuration * pauseFactor) / (settings.speed || 1);
-        
-        const formattedText = formatSubtitleText(subtitleText);
-        
-        timings.push({
-          start: currentTime,
-          end: currentTime + adjustedDuration,
-          text: formattedText
-        });
-        
-        currentTime += adjustedDuration;
-      }
-      
-      // Add a small gap between sentences
-      if (idx < sentences.length - 1) {
-        currentTime += 0.3 / (settings.speed || 1);
-      }
+      timings.push({
+        start,
+        end,
+        text: segment
+      });
     });
     
-    // Adjust timings to match total audio duration
-    if (timings.length > 0 && durationEstimate > 0) {
-      const scaleFactor = durationEstimate / currentTime;
-      return timings.map(timing => ({
-        start: timing.start * scaleFactor,
-        end: timing.end * scaleFactor,
-        text: timing.text
-      }));
-    }
-    
+    console.log("Generated timings:", timings);
     return timings;
   };
 
@@ -198,8 +161,11 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
     for (let i = 0; i < captionTimings.length; i++) {
       const timing = captionTimings[i];
       if (currentTime >= timing.start && currentTime <= timing.end) {
-        if (currentCaptionIndex !== i) {
+        if (lastCaptionTextRef.current !== timing.text) {
           setCurrentCaptionIndex(i);
+          lastCaptionTextRef.current = timing.text;
+          
+          console.log(`Caption at ${currentTime.toFixed(2)}s:`, timing.text);
           
           // Call the callback to update the caption in the parent component
           if (onCaptionTimeUpdate) {
@@ -210,13 +176,19 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       }
     }
     
-    // If we're between captions, clear the text
-    if (onCaptionTimeUpdate && currentTime > 0) {
-      onCaptionTimeUpdate(currentTime, "");
+    // If we're between captions or after all captions, clear the text
+    if (lastCaptionTextRef.current && currentTime > 0) {
+      lastCaptionTextRef.current = '';
+      
+      // Callback to clear captions in parent
+      if (onCaptionTimeUpdate) {
+        onCaptionTimeUpdate(currentTime, "");
+      }
     }
   };
 
   const handleAudioEnded = () => {
+    console.log("Audio playback ended");
     setIsPlaying(false);
     if (onPlayingChange) {
       onPlayingChange(false);
@@ -224,6 +196,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
     
     // Reset current caption index
     setCurrentCaptionIndex(0);
+    lastCaptionTextRef.current = '';
     
     // Callback to reset captions in parent
     if (onCaptionTimeUpdate) {
@@ -232,11 +205,16 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   };
 
   const togglePlayPause = () => {
-    if (!audioRef.current || !audioUrl) return;
+    if (!audioRef.current || !audioUrl) {
+      console.log("Cannot toggle play/pause: No audio loaded");
+      return;
+    }
     
     if (isPlaying) {
+      console.log("Pausing audio playback");
       audioRef.current.pause();
     } else {
+      console.log("Starting audio playback");
       audioRef.current.play().catch(error => {
         console.error("Error playing audio:", error);
         toast.error("Failed to play audio. Please try again.");
@@ -272,6 +250,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       console.log("Voice ID:", settings.voiceId);
       console.log("Speed:", settings.speed);
       console.log("Pitch:", settings.pitch);
+      console.log("Text to convert:", textToVoice);
       
       const response = await fetch("https://api.elevenlabs.io/v1/text-to-speech/" + settings.voiceId, {
         method: "POST",
@@ -305,11 +284,13 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       
       // Get approximate duration from blob size (rough estimate)
       const estimatedDuration = (audioBlob.size / 32000) * settings.speed; // rough estimate based on 32kbps audio
+      console.log("Estimated audio duration:", estimatedDuration, "seconds");
       
       // Generate timings for frame-accurate subtitles
       const timings = generateSubtitleTimings(textToVoice, estimatedDuration);
       setCaptionTimings(timings);
       setCurrentCaptionIndex(0);
+      lastCaptionTextRef.current = '';
       
       // Set up audio element
       if (audioRef.current) {
@@ -342,7 +323,6 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
 
   // Display current caption timing info for debugging
   const currentCaption = captionTimings[currentCaptionIndex];
-  const currentCaptionText = currentCaption?.text || "";
 
   return (
     <div className="glass-panel p-5 space-y-4">
@@ -533,7 +513,13 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
           
           {/* Current caption display */}
           <div className="mt-3 p-2 bg-muted/30 rounded-md text-sm text-center">
-            {currentCaptionText || "No captions available"}
+            {currentCaption ? currentCaption.text : "No captions available"}
+          </div>
+          
+          {/* Debug info */}
+          <div className="mt-2 text-xs text-muted-foreground">
+            <p>Total segments: {captionTimings.length}</p>
+            <p>Current segment: {currentCaptionIndex + 1} of {captionTimings.length}</p>
           </div>
         </div>
       )}

@@ -84,8 +84,28 @@ const Preview: React.FC<PreviewProps> = ({
   const formatCaptionText = (text: string | undefined): string[] => {
     if (!text || text.trim() === '') return [];
     
-    // Return the text as-is - it's already formatted by VoiceControls
-    return [text];
+    // Split into lines for better readability (max 42 chars per line)
+    const MAX_CHARS_PER_LINE = 42;
+    let lines: string[] = [];
+    let words = text.split(' ');
+    let currentLine = '';
+    
+    words.forEach(word => {
+      // Check if adding this word would exceed the max line length
+      if ((currentLine + ' ' + word).length <= MAX_CHARS_PER_LINE) {
+        currentLine = currentLine ? currentLine + ' ' + word : word;
+      } else {
+        // If the line would be too long, push the current line and start a new one
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    });
+    
+    // Add the last line if it exists
+    if (currentLine) lines.push(currentLine);
+    
+    // Return at most 3 lines
+    return lines.slice(0, 3);
   };
 
   // Format caption lines for display
@@ -167,10 +187,10 @@ const Preview: React.FC<PreviewProps> = ({
           />
         )}
         
-        {/* Caption overlay - showing subtitle text with proper formatting */}
+        {/* Caption overlay */}
         {captionLines.length > 0 && (
           <div
-            className={`absolute inset-x-0 px-4 text-center ${captionPositionClass}`}
+            className={`absolute inset-x-0 px-4 text-center ${captionPositionClass} z-10`}
           >
             <div 
               className="inline-block max-w-[90%] bg-black/40 backdrop-blur-sm px-3 py-2 rounded-md"
@@ -246,6 +266,17 @@ const Preview: React.FC<PreviewProps> = ({
             />
           ))}
         </div>
+      </div>
+      
+      {/* Debug information for captions - this helps diagnose issues */}
+      <div className="mt-2 text-xs text-muted-foreground">
+        {isPlayingAudio ? (
+          <div>
+            <p>Audio playing: {isPlayingAudio ? 'Yes' : 'No'}</p>
+            <p>Current caption: {activeCaptionText || 'None'}</p>
+            <p>Caption lines: {captionLines.length}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
