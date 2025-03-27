@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from "react";
 import { VoiceOption, VoiceSettings } from "@/lib/types";
 import { toast } from "sonner";
@@ -34,10 +35,9 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [captionTimings, setCaptionTimings] = useState<{start: number; end: number; text: string}[]>([]);
-  const [currentCaptionIndex, setCurrentCaptionIndex] = useState<number>(0);
+  const [captionSegments, setCaptionSegments] = useState<{start: number; end: number; text: string}[]>([]);
+  const [currentCaptionIndex, setCurrentCaptionIndex] = useState<number>(-1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const lastCaptionTextRef = useRef<string>('');
   
   const updateSettings = (newSettings: Partial<VoiceSettings>) => {
     onUpdate({ ...settings, ...newSettings });
@@ -105,41 +105,51 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   const splitTextIntoSegments = (text: string): string[] => {
     if (!text) return [];
     
-    // Split text into words
-    const words = text.split(/\s+/).filter(w => w.length > 0);
+    // Split text into sentences
+    const sentences = text.replace(/([.!?])\s+/g, "$1|").split("|");
+    
     const segments: string[] = [];
     
-    // Group words into segments of 2-3 words each
-    for (let i = 0; i < words.length; i += 3) {
-      const segmentWords = words.slice(i, i + 3);
-      if (segmentWords.length > 0) {
-        segments.push(segmentWords.join(' '));
+    sentences.forEach(sentence => {
+      if (!sentence.trim()) return;
+      
+      // Split sentence into words
+      const words = sentence.trim().split(/\s+/);
+      
+      // Group words into segments of 2-3 words each
+      for (let i = 0; i < words.length; i += 3) {
+        const segmentWords = words.slice(i, Math.min(i + 3, words.length));
+        if (segmentWords.length > 0) {
+          segments.push(segmentWords.join(' '));
+        }
       }
-    }
+    });
     
     return segments;
   };
 
-  // Improved function to generate frame-accurate subtitle timings
+  // Generate frame-accurate subtitle timings
   const generateSubtitleTimings = (text: string, durationEstimate: number) => {
     if (!text) return [];
     
     console.log("Generating subtitle timings for:", text);
     console.log("Estimated duration:", durationEstimate);
     
-    // Split text into segments (2-3 words per segment)
+    // Split text into segments
     const segments = splitTextIntoSegments(text);
     console.log("Text segments:", segments);
+    
+    if (segments.length === 0) return [];
     
     const timings: {start: number; end: number; text: string}[] = [];
     
     // Calculate time per segment
     const timePerSegment = durationEstimate / segments.length;
     
-    // Generate timing for each segment
+    // Generate timing for each segment with a small gap between segments
     segments.forEach((segment, index) => {
       const start = index * timePerSegment;
-      const end = (index + 1) * timePerSegment;
+      const end = (index + 1) * timePerSegment - 0.05; // Small gap between segments
       
       timings.push({
         start,
@@ -153,32 +163,32 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   };
 
   const handleTimeUpdate = () => {
-    if (!audioRef.current || captionTimings.length === 0) return;
+    if (!audioRef.current || captionSegments.length === 0) return;
     
     const currentTime = audioRef.current.currentTime;
+    let foundSegment = false;
     
     // Find the current caption based on timestamp
-    for (let i = 0; i < captionTimings.length; i++) {
-      const timing = captionTimings[i];
-      if (currentTime >= timing.start && currentTime <= timing.end) {
-        if (lastCaptionTextRef.current !== timing.text) {
+    for (let i = 0; i < captionSegments.length; i++) {
+      const segment = captionSegments[i];
+      if (currentTime >= segment.start && currentTime <= segment.end) {
+        foundSegment = true;
+        if (currentCaptionIndex !== i) {
           setCurrentCaptionIndex(i);
-          lastCaptionTextRef.current = timing.text;
-          
-          console.log(`Caption at ${currentTime.toFixed(2)}s:`, timing.text);
+          console.log(`Caption at ${currentTime.toFixed(2)}s:`, segment.text);
           
           // Call the callback to update the caption in the parent component
           if (onCaptionTimeUpdate) {
-            onCaptionTimeUpdate(currentTime, timing.text);
+            onCaptionTimeUpdate(currentTime, segment.text);
           }
         }
-        return;
+        break;
       }
     }
     
-    // If we're between captions or after all captions, clear the text
-    if (lastCaptionTextRef.current && currentTime > 0) {
-      lastCaptionTextRef.current = '';
+    // Clear the caption if we're between segments
+    if (!foundSegment && currentCaptionIndex !== -1) {
+      setCurrentCaptionIndex(-1);
       
       // Callback to clear captions in parent
       if (onCaptionTimeUpdate) {
@@ -190,15 +200,13 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   const handleAudioEnded = () => {
     console.log("Audio playback ended");
     setIsPlaying(false);
+    setCurrentCaptionIndex(-1);
+    
     if (onPlayingChange) {
       onPlayingChange(false);
     }
     
-    // Reset current caption index
-    setCurrentCaptionIndex(0);
-    lastCaptionTextRef.current = '';
-    
-    // Callback to reset captions in parent
+    // Callback to clear captions in parent
     if (onCaptionTimeUpdate) {
       onCaptionTimeUpdate(0, "");
     }
@@ -288,9 +296,8 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       
       // Generate timings for frame-accurate subtitles
       const timings = generateSubtitleTimings(textToVoice, estimatedDuration);
-      setCaptionTimings(timings);
-      setCurrentCaptionIndex(0);
-      lastCaptionTextRef.current = '';
+      setCaptionSegments(timings);
+      setCurrentCaptionIndex(-1);
       
       // Set up audio element
       if (audioRef.current) {
@@ -321,8 +328,8 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
     updateSettings({ pitch: parseFloat(e.target.value) });
   };
 
-  // Display current caption timing info for debugging
-  const currentCaption = captionTimings[currentCaptionIndex];
+  // Get current caption for display
+  const currentCaption = currentCaptionIndex >= 0 ? captionSegments[currentCaptionIndex] : null;
 
   return (
     <div className="glass-panel p-5 space-y-4">
@@ -516,10 +523,10 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
             {currentCaption ? currentCaption.text : "No captions available"}
           </div>
           
-          {/* Debug info */}
+          {/* Debugging information */}
           <div className="mt-2 text-xs text-muted-foreground">
-            <p>Total segments: {captionTimings.length}</p>
-            <p>Current segment: {currentCaptionIndex + 1} of {captionTimings.length}</p>
+            <p>Total segments: {captionSegments.length}</p>
+            <p>Current segment: {currentCaptionIndex >= 0 ? currentCaptionIndex + 1 : 0} of {captionSegments.length}</p>
           </div>
         </div>
       )}

@@ -104,8 +104,8 @@ const Preview: React.FC<PreviewProps> = ({
     // Add the last line if it exists
     if (currentLine) lines.push(currentLine);
     
-    // Return at most 3 lines
-    return lines.slice(0, 3);
+    // Return at most 2 lines
+    return lines.slice(0, 2);
   };
 
   // Format caption lines for display
@@ -268,16 +268,13 @@ const Preview: React.FC<PreviewProps> = ({
         </div>
       </div>
       
-      {/* Debug information for captions - this helps diagnose issues */}
-      <div className="mt-2 text-xs text-muted-foreground">
-        {isPlayingAudio ? (
-          <div>
-            <p>Audio playing: {isPlayingAudio ? 'Yes' : 'No'}</p>
-            <p>Current caption: {activeCaptionText || 'None'}</p>
-            <p>Caption lines: {captionLines.length}</p>
-          </div>
-        ) : null}
-      </div>
+      {/* Caption debugging information */}
+      {isPlayingAudio && (
+        <div className="mt-2 px-2 py-1 text-xs bg-muted/30 rounded-md">
+          <p className="font-medium">Current caption: {activeCaptionText || 'None'}</p>
+          <p>Time: {currentTime.toFixed(2)}s</p>
+        </div>
+      )}
     </div>
   );
 };
